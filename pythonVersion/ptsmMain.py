@@ -1,0 +1,266 @@
+
+import Trajectory
+import numpy as np
+from io import StringIO
+import time, OSC, socket
+import threading
+import random as pyrandom
+import pyo64 as pyo
+from scipy.signal import butter, lfilter, freqz
+import matplotlib.pyplot as plt
+from threading import Thread
+
+def linlin(x, smi, sma, dmi, dma): return (x-smi)/(sma-smi)*(dma-dmi)+dmi
+
+
+# Audio server
+
+# Is 1024 too large for the bufferSize in this case.
+fs = 44100/5
+s = pyo.Server(sr=fs, nchnls=2, buffersize=1024, duplex=0).boot()
+s.start()
+# Need to adjust the maxsize to test the speed.
+fifo = pyo.FIFOPlayer(maxsize=20, mul=[.5,.5])
+mixer = pyo.Mixer()
+mixer.addInput(0, fifo);mixer.setAmp(0,0,1)
+mixer.addInput(1, fifo);mixer.setAmp(1,1,1)
+mixer.out()
+fifo.out()
+
+# TODO all audio stuff in a separate class.
+class soundOption(object):
+    def velocity(self, event):
+        global which2play
+        which2play = "velocity"
+
+    def force(self, event):
+        global which2play
+        which2play = "force"
+
+
+def proc(fifo, stopevent, soundOutput):
+    fifo.put(soundOutput)
+
+
+def butter_lowpass(cutoff, fs, order=5):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    return b, a
+
+
+def butter_lowpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_lowpass(cutoff, fs, order=order)
+    y = lfilter(b, a, data)
+    return y
+
+# Create a rigid window to ramp on/off the audio vector to prevent clipping.
+# But I still hear clipping.
+def makeWindow(s, rampUp=0.02, rampDown=0.02):
+    w = np.append(np.linspace(0, 1.0, num=int(s * rampUp)), \
+                  np.ones(s - int(s * rampUp) - int(s * rampDown)))
+    w = np.append(w, np.linspace(1.0, 0, num=int(s * rampDown)))
+    return w
+
+
+# ---------------Audio ---------------------#
+
+
+
+
+# Turn list into integer, not used.
+def list2int(numbers):
+    return int(''.join(["%d" % x for x in numbers]))
+
+
+
+# TODO slider update in a class. or not...
+# Slider update function, for the interaction
+def sliderUpdate(val):
+    global dt, resistant
+    sigma = ssigma.val
+    dt = sdt.val
+    resistant = sresistant.val
+
+
+def sigmaUpdate(val):
+    global sigma, exp_table, delta_dis
+    sigma = ssigma.val
+    exp_table = updateExpTable(sigma, delta_dis)
+
+# TODO put exp table in a separate class file.
+# Create an exponential table for the lookup calculation of potential.
+def createExpTable(dim, sigma, exp_resolution=1000000):
+    delta_dis = np.linspace(0.0, dim, num=exp_resolution)  # Range of distance difference.
+    tab = updateExpTable(sigma, delta_dis)
+    return tab, dim
+
+
+def updateExpTable(sigma, delta_dis):
+    sigma2 = sigma * sigma
+    # Try 2 time sigma2
+    return np.exp(- delta_dis / (2 * sigma2)) / sigma2
+#----------------------------------
+
+# TODO all plotting in a class
+def plotPotential(data2d, fig2, sigma=.1, Nx=40, Ny=40):
+    # ensure the data sending for plotPotential is always in 2d.
+    potmap = np.zeros((Nx, Ny))
+    for i in range(Nx):
+        for j in range(Ny):
+            x = float(i) / Nx - 0.5
+            y = float(j) / Ny - 0.5
+            potmap[j, i] = Trajectory.potential_ds(data2d, np.array([x, y]), sigma)
+    fig2.clf()
+    plt.matshow(potmap, cmap=plt.cm.gray, extent=(-0.5, 0.5, 0.5, -0.5), fignum=2)
+    fig2.gca().plot(data[:, 0], data[:, 1], ".")
+    plt.show()
+
+
+def plotTrajectory(data, sigma, trj, resultWindow, audioVecSize):
+    plotPotential(data[:, 0:2], fig2=resultWindow, sigma=sigma)
+    resultWindow.gca().plot(trj[:, 1], trj[:, 2], "-", lw=0.7, c="green")
+    # Mark the beginning and the end of trajectory .
+    resultWindow.gca().plot(trj[0, 1], trj[0, 2], "o", c="yellow")
+    resultWindow.gca().plot(trj[audioVecSize - 1, 1], trj[audioVecSize - 1, 2], "x", c="red")
+    resultWindow.gca().axis([-0.6, 0.6, -0.6, 0.6])
+    resultWindow.canvas.draw()
+
+
+
+def initializePot(data, N):  # It takes data and number of rows.
+    sctPlot = ax.scatter(data[:, 0], data[:, 1], c="blue", picker=2, s=[50] * N)
+    fig.subplots_adjust(bottom=0.25, left=0.1)
+    plt.grid(False)
+    plt.axis([-0.6, 0.6, -0.6, 0.6])
+    return sctPlot
+
+
+def spectrum(av, fs):
+    NFFT = 1024
+    plt.figure()
+    plt.specgram(av, NFFT=NFFT, Fs=fs, noverlap=900, cmap=plt.cm.gist_heat)
+    plt.show()
+
+
+
+# TODO all data gen in a class
+def stdData(data, dim):
+    for i in range(dim):
+        # S1 Standardize data.
+        data[:, i] = (data[:, i] - np.mean(data[:, i])) / np.std(data[:, 1])
+        # limit range to -.5 ~ .5 in each dimension
+        data[:, i] = data[:, i] / np.max(np.absolute(data[:, i]))
+        data[:, i] = data[:, i] / 2
+    return data
+
+
+# Generate data set based of dimension and num_of_cluster.
+def dataGen(dim, c, sigma=0.2, minnr=50, maxnr=200):
+    for i in range(c):
+        nr = pyrandom.randrange(minnr, maxnr, 1)
+        meanvec = np.random.rand(dim)
+        covmat = sigma ** 2 * np.cov(np.random.rand(dim, dim))
+        dtmp = np.random.multivariate_normal(meanvec, covmat, nr)
+        if (i == 0):
+            result = dtmp.copy()
+        else:
+            result = np.vstack((result, dtmp.copy()))
+    return stdData(result, dim)
+
+
+
+# TODO: a button to regenerate new data set. And send through
+data = dataGen(4, 3,sigma = 0.4, minnr = 100, maxnr = 300)
+N, dim = data.shape[0], data.shape[1]
+# Create exp lookup
+
+exp_resolution = 1000000 # Resolution for lookup table
+delta_dis = np.linspace(0.0, dim, num = exp_resolution) # Range of distance difference.
+# m_comp = 0.001 # mass compensation
+norm_max = dim
+sigma = 0.1
+exp_table = updateExpTable(sigma, delta_dis)
+
+fig, ax = plt.subplots()
+m_comp, dt, resistant, sigma = 0.02, 0.005 , 0.999, 0.15 # init
+max_sigma = np.log(dim)/2.5 * 0.5 + 0.1
+t = 1.0 # Time in second per piece
+blockSize = 5000   # Buffer size for trajectory
+audioVecSize  = int(t *  blockSize)  # I define that 5000 steps will return 1 second of audio
+exp_table, norm_max = createExpTable(dim, sigma, exp_resolution = exp_resolution)
+windowing = makeWindow(audioVecSize, rampUp = 0.05, rampDown = 0.05) # Windowing for audio
+velSound = np.zeros(audioVecSize)
+forceSound = np.zeros(dim*audioVecSize) # This is only meant for visualisation.
+drawResult = True
+which2play = "velocity" # Initialise the button press
+pos2d = np.zeros(2)
+resultWindow = plt.figure(2, figsize=(8, 8))
+# plotPotential(data[:, 0:2], fig2 = resultWindow,  sigma = sigma )
+sctPlot = initializePot(data, N)
+
+
+def on_pick(event):
+    # In the continuous mode, window shouldn't be used.
+    global data, sigma, resistant, dt, resultWindow, windowing, audioVecSize, \
+        norm_max, velSound, drawResult, dim, forceSound, fs
+    vel = (np.random.rand(dim) - 0.5)
+    # Initialise velocity.
+
+    artist = event.artist  # Current click event
+    ind = np.array(event.ind)  # Get the index of the clicked data
+    pos = np.array(data[ind[0], :])
+
+    # Get PTSM trajectory information
+    trj, junk, forceSound = Trajectory.PTSM(pos, data, vel, exp_table, exp_resolution, \
+                                 norm_max, sigma=sigma, dt=dt, r=resistant, \
+                                 Nsamp=audioVecSize, compensation=m_comp)
+    # -------------------------------------------#
+    # Process sound #----------
+    velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * windowing
+    velSound = butter_lowpass_filter(velSound, 2000.0, fs, 6)  # 6th order
+    forceSound = forceSound / np.max(np.absolute(forceSound))
+    stopevent = threading.Event()
+    producer = threading.Thread(name="Compute audio signal", target=proc, args=[fifo, stopevent, velSound])
+    producer.start()
+    if drawResult == True:
+        #         plotTrajectory(data = data, sigma = sigma, trj = trj,
+        #                        resultWindow = resultWindow, audioVecSize = resultWindow)
+        plotPotential(data[:, 0:2], fig2=resultWindow, sigma=sigma)
+        resultWindow.gca().plot(trj[:, 1], trj[:, 2], "-", lw=0.7, c="green")
+        # Mark the beginning and the end of trajectory .
+        resultWindow.gca().plot(trj[0, 1], trj[0, 2], "o", c="yellow")
+        resultWindow.gca().plot(trj[audioVecSize - 1, 1], trj[audioVecSize - 1, 2], "x", c="red")
+        resultWindow.gca().axis([-0.6, 0.6, -0.6, 0.6])
+        resultWindow.canvas.draw()
+
+
+# ---------------#
+# Create a slider for setting up the velocity
+axcolor = 'lightgoldenrodyellow'
+# Create sliders for sigma and dt.
+axSigma = plt.axes([0.1, 0.1, 0.8, 0.02], axisbg=axcolor)
+axDt = plt.axes([0.1, 0.06, 0.8, 0.02], axisbg=axcolor)
+axR = plt.axes([0.1, 0.02, 0.8, 0.02], axisbg=axcolor)
+axB1 = plt.axes([0.1, 0.13, 0.1, 0.075], axisbg=axcolor)
+axB2 = plt.axes([0.21, 0.13, 0.1, 0.075], axisbg=axcolor)
+
+ssigma = plt.Slider(axSigma, "Sigma", 0.001, max_sigma, valinit=sigma, color='blue')
+sdt = plt.Slider(axDt, "dt", 0.001, 0.01, valinit=dt, color='blue')
+sresistant = plt.Slider(axR, "r", 0.99, 1.0, valinit=resistant, color='blue')
+
+choice = soundOption()
+
+b1 = plt.Button(axB1, "Velocity")
+b1.on_clicked(choice.velocity)
+b2 = plt.Button(axB2, "Force")
+b2.on_clicked(choice.force)
+
+ssigma.on_changed(sigmaUpdate)
+sdt.on_changed(sliderUpdate)
+sresistant.on_changed(sliderUpdate)
+resultWindow = plt.figure(2, figsize=(8, 8))
+fig.canvas.mpl_connect('pick_event', on_pick)
+plt.show()
+
+
