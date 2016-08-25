@@ -10,14 +10,11 @@ def potential_ds(np.ndarray[np.float64_t, ndim = 2] data, np.ndarray[np.float64_
     cdef double potential, p_sum = 0.0
     cdef int j, i
     cdef double sigma2 = sigma * sigma
-
     for j in range(N):
         for i in range(dim):
             p_sum += (grid[i] - data[j, i]) * (grid[i] - data[j, i])
-
         potential += -exp(-0.5 * p_sum / sigma2)
         p_sum = 0
-
     return potential
 
 
