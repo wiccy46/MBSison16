@@ -170,8 +170,8 @@ class Ptsgui(QtGui.QMainWindow):
         sigmaSlider.setRange(0, 100)
         sigmaSlider.setValue(50)
         sigmaSlider.valueChanged[int].connect(self.sigmaChangeValue)
-        sigmaDisplay = QtGui.QLineEdit()
-        sigmaDisplay.setFixedSize(50, 25)
+        self.sigmaDisplay = QtGui.QLineEdit()
+        self.sigmaDisplay.setFixedSize(50, 25)
 
 
         dt_init = 0.005
@@ -179,12 +179,14 @@ class Ptsgui(QtGui.QMainWindow):
         dtSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
         dtSlider.setRange(0, 100)
         temp = linlinInvert(dt_init, 0, 100, 0.001, 0.01)
+
         # print "dtInit " +  str(linlin(temp,0, 100, 0.001, 0.01))
-        dtSlider.setValue(temp)
+
         dtSlider.valueChanged[int].connect(self.dtChangeValue)
-        dtDisplay = QtGui.QLineEdit()
-        dtDisplay.setFixedSize(50, 25)
-        dtDisplay.setText(str(dt_init))
+        dtSlider.setValue(temp)
+        self.dtDisplay = QtGui.QLineEdit()
+        self.dtDisplay.setFixedSize(50, 25)
+        self.dtDisplay.setText(str(dt_init))
 
         rTitle = QtGui.QLabel('r')
         rSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
@@ -192,11 +194,11 @@ class Ptsgui(QtGui.QMainWindow):
         r_init = 0.999
         temp = linlinInvert(r_init, 0, 100, 0.99, 1.0)
         # print "rInit " + str(linlin(temp,0, 100, 0.99, 1.0))
-        dtSlider.setValue(temp)
+        rSlider.setValue(temp)
         rSlider.valueChanged[int].connect(self.rChangeValue)
-        rDisplay = QtGui.QLineEdit()
-        rDisplay.setFixedSize(50, 25)
-        rDisplay.setText(str(r_init))
+        self.rDisplay = QtGui.QLineEdit()
+        self.rDisplay.setFixedSize(50, 25)
+        self.rDisplay.setText(str(r_init))
 
 
         cltLeftBox = QtGui.QGridLayout()
@@ -207,13 +209,13 @@ class Ptsgui(QtGui.QMainWindow):
         cltRightBox = QtGui.QGridLayout()
         cltRightBox.addWidget(sigmaTitle, 1, 0)
         cltRightBox.addWidget(sigmaSlider, 1, 1)
-        cltRightBox.addWidget(sigmaDisplay, 1, 2)
+        cltRightBox.addWidget(self.sigmaDisplay, 1, 2)
         cltRightBox.addWidget(dtTitle, 2, 0)
         cltRightBox.addWidget(dtSlider, 2, 1)
-        cltRightBox.addWidget(dtDisplay, 2, 2)
+        cltRightBox.addWidget(self.dtDisplay, 2, 2)
         cltRightBox.addWidget(rTitle, 3, 0)
         cltRightBox.addWidget(rSlider, 3, 1)
-        cltRightBox.addWidget(rDisplay, 3, 2)
+        cltRightBox.addWidget(self.rDisplay, 3, 2)
 
 
         # Sub layout 1
@@ -236,19 +238,21 @@ class Ptsgui(QtGui.QMainWindow):
         smi, sma = 0, 100
         dmi, dma = 0.001, self.max_sigma
         self.sigma = linlin(value, smi, sma, dmi, dma)
-        print self.sigma
+        self.sigmaDisplay.setText(str(self.sigma))
+
 
     def dtChangeValue(self, value):
         smi, sma = 0, 100
         dmi, dma = 0.001, 0.01
         self.dt = linlin(value, smi, sma, dmi, dma)
-        print self.dt
+        self.dtDisplay.setText(str(self.dt))
+        # print self.dt
 
     def rChangeValue(self, value):
         smi, sma = 0, 100
         dmi, dma = 0.99, 1.0
         self.r = linlin(value, smi, sma, dmi, dma)
-        print self.r
+        self.rDisplay.setText(str(self.r))
 
     def closeEvent(self, event):
 		reply = QtGui.QMessageBox.question(self, 'Message',
