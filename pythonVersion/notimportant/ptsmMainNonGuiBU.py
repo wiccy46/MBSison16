@@ -16,6 +16,8 @@ from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as Navigatio
 from matplotlib.figure import Figure
 
 def linlin(x, smi, sma, dmi, dma): return (x-smi)/(sma-smi)*(dma-dmi)+dmi
+
+
 # Turn list into integer, not used.
 def list2int(numbers):
     return int(''.join(["%d" % x for x in numbers]))

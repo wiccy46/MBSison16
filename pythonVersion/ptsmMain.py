@@ -3,7 +3,7 @@ import numpy as np
 from io import StringIO
 import time, OSC, socket
 import threading, sys
-from PyQt4 import QtGui
+from PyQt4 import QtGui, QtCore
 import pyo64 as pyo
 import matplotlib.pyplot as plt
 from threading import Thread
@@ -18,16 +18,19 @@ from matplotlib.figure import Figure
 """
 Set up Audio server
 """
-def FS():
-    return 44100/4
 
-def BLOCK():
-    return 1024
+
+FS = 44100/4
+BLOCK = 1024
+
 
 # TODO put this in the GUI so that there is a button to stop.
-s = pyo.Server(sr=FS(), nchnls=2, buffersize=BLOCK(), duplex=0).boot()
+s = pyo.Server(sr=FS, nchnls=2, buffersize=BLOCK, duplex=0).boot()
 s.start()
 # Need to adjust the maxsize to test the speed.
+
+def linlin(x, smi, sma, dmi, dma): return (x-smi)/float(sma-smi)*(dma-dmi)+dmi
+def linlinInvert(x, smi, sma, dmi, dma): return (x-dmi)*(sma-smi)/(dma-dmi) + smi
 
 
 class Ptsgui(QtGui.QMainWindow):
@@ -43,21 +46,20 @@ class Ptsgui(QtGui.QMainWindow):
         self.mixer.out()
         self.fifo.out()
 
-
-        self.initUI()
         self.data, self.pos = np.zeros(2), np.zeros(2)
         self.vel , self.t = 0, 1.
         self.exp_table = np.zeros(1) # Initialise the exp table
         self.norm_max = 0
+        self.max_sigma = 0.4
         self.exp_resolution = 1000000  # Resolution for lookup table
 
         # TODO These parameter should become sliders
         self.m_comp, self.dt, self.resistant, self.sigma = 0.02, 0.005, 0.999, 0.15  # init
-
         self.t = 1.0  # Time in second per piece, TODO a para
         self.blockSize = 5000  # Buffer size for trajectory TODO a para
         self.audioVecSize = int(self.t * self.blockSize)  # I define that 5000 steps will return 1 second of audio
         self.windowing = DSP().makeWindow(self.audioVecSize, rampUp=0.05, rampDown=0.05)  # Windowing for audio
+        self.initUI()
 
     def proc(self, stopevent, soundOutput):
         self.fifo.put(soundOutput)
@@ -71,7 +73,7 @@ class Ptsgui(QtGui.QMainWindow):
                                                 self.norm_max, sigma=self.sigma, dt=self.dt, r=self.resistant, \
                                                 Nsamp=self.audioVecSize, compensation=self.m_comp)
         velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.windowing
-        velSound = DSP().butter_lowpass_filter(velSound, 2000.0, FS(), 6)  # 6th order
+        velSound = DSP().butter_lowpass_filter(velSound, 2000.0, FS, 6)  # 6th order
         # forceSound = forceSound / np.max(np.absolute(forceSound))
         stopevent = threading.Event()
         producer = threading.Thread(name="Compute audio signal", target=self.proc, args=[ stopevent, velSound])
@@ -96,8 +98,6 @@ class Ptsgui(QtGui.QMainWindow):
         self.trjFigAx.set_ylim([-0.5, 0.5])
         self.trjFigCanvas.draw()
 
-
-
     def sendData(self):
         print "Send data"
 
@@ -106,6 +106,7 @@ class Ptsgui(QtGui.QMainWindow):
         self.data = DataGen().datagen(4, 3, sigma=0.4, minnr=100, maxnr=300)
         self.N, self.dim = self.data.shape[0], self.data.shape[1]
         self.norm_max = self.dim
+        self.max_sigma = np.log(self.dim) / 2.5 * 0.5 + 0.1
         delta_dis = np.linspace(0.0, self.dim, num=self.exp_resolution)  # Range of distance difference.
         self.exp_table = Exptable().updateExpTable(self.sigma, delta_dis)
         self.dataFigAx.scatter(self.data[:, 0], self.data[:, 1], c="blue", picker=2, s=[50] *self.N)
@@ -117,31 +118,13 @@ class Ptsgui(QtGui.QMainWindow):
         self.setWindowTitle('PTS')
 
         mainlayout = QtGui.QVBoxLayout()
-
         self.widget = QtGui.QWidget()
         self.widget.setLayout(mainlayout)
         self.setCentralWidget(self.widget)  # Set main layout to layout of widget!!!
 
-        # Sub layout 1
-        plotBox = QtGui.QHBoxLayout()
-        cltBox = QtGui.QHBoxLayout()
-        cltBox.setSpacing(30)
-        mainlayout.addLayout(plotBox)
-        mainlayout.addLayout(cltBox)
 
-        genDataButton = QtGui.QPushButton('Generate Data', self)
-        genDataButton.setToolTip('This button randomise a \
-            set of data based on the input dimension and cluster amount.')
-        genDataButton.resize(genDataButton.sizeHint())
-        # genDataButton.move(50, 550)
-        genDataButton.clicked.connect(self.genData)
-        cltBox.addWidget(genDataButton)
-        sendDataButton = QtGui.QPushButton("Send Data", self)
-        sendDataButton.resize(genDataButton.sizeHint())
-        # sendDataButton.move(200, 550)
-        sendDataButton.clicked.connect(self.sendData)
-        cltBox.addWidget(sendDataButton)
 
+        # plotBox contents (sublay 1)
         self.dataFig = plt.figure()
         self.dataFigCanvas = FigureCanvas(self.dataFig)
         self.dataFigCanvas.mpl_connect('pick_event', self.datafigon_pick)
@@ -164,10 +147,94 @@ class Ptsgui(QtGui.QMainWindow):
         plotBoxR.setSpacing(5)
         plotBoxR.addWidget(self.trjFigCanvas)
         plotBoxR.addWidget(self.trjFigToolbar)
+
+        #-----------------
+
+
+        # cltBox contents (sublay 1)
+        genDataButton = QtGui.QPushButton('Generate Data', self)
+        genDataButton.setToolTip('This button randomise a \
+            set of data based on the input dimension and cluster amount.')
+        genDataButton.resize(genDataButton.sizeHint())
+        # genDataButton.move(50, 550)
+        genDataButton.clicked.connect(self.genData)
+        sendDataButton = QtGui.QPushButton("Send Data", self)
+        sendDataButton.resize(genDataButton.sizeHint())
+        # sendDataButton.move(200, 550)
+        sendDataButton.clicked.connect(self.sendData)
+        #----------------------
+
+        #TODO need a display box.
+        sigmaTitle = QtGui.QLabel('Sigma')
+        sigmaSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
+        sigmaSlider.setRange(0, 100)
+        sigmaSlider.setValue(50)
+        sigmaSlider.valueChanged[int].connect(self.sigmaChangeValue)
+
+        dtTitle = QtGui.QLabel('dt')
+        dtSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
+        dtSlider.setRange(0, 100)
+        temp = linlinInvert(0.005, 0, 100, 0.001, 0.01)
+        # print "dtInit " +  str(linlin(temp,0, 100, 0.001, 0.01))
+        dtSlider.setValue(temp)
+        dtSlider.valueChanged[int].connect(self.dtChangeValue)
+
+        rTitle = QtGui.QLabel('r')
+        rSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
+        rSlider.setRange(0, 100)
+        temp = linlinInvert(0.999, 0, 100, 0.99, 1.0)
+        # print "rInit " + str(linlin(temp,0, 100, 0.99, 1.0))
+        dtSlider.setValue(temp)
+        rSlider.valueChanged[int].connect(self.rChangeValue)
+
+
+        cltLeftBox = QtGui.QGridLayout()
+        cltLeftBox.addWidget(genDataButton, 1, 0)
+        cltLeftBox.addWidget(sendDataButton, 1, 1)
+
+
+        cltRightBox = QtGui.QGridLayout()
+        cltRightBox.addWidget(sigmaTitle, 1, 0)
+        cltRightBox.addWidget(sigmaSlider, 1, 1)
+        cltRightBox.addWidget(dtTitle, 2, 0)
+        cltRightBox.addWidget(dtSlider, 2, 1)
+        cltRightBox.addWidget(rTitle, 3, 0)
+        cltRightBox.addWidget(rSlider, 3, 1)
+
+
+        # Sub layout 1
+        plotBox = QtGui.QHBoxLayout()
         plotBox.addLayout(plotBoxL)
         plotBox.addLayout(plotBoxR)
+
+        cltBox = QtGui.QHBoxLayout()
+
+        cltBox.addLayout(cltLeftBox)
+        cltBox.addLayout(cltRightBox)
+
+        mainlayout.addLayout(plotBox)
+        mainlayout.addLayout(cltBox)
+
+
         self.show()
 
+    def sigmaChangeValue(self, value):
+        smi, sma = 0, 100
+        dmi, dma = 0.001, self.max_sigma
+        self.sigma = linlin(value, smi, sma, dmi, dma)
+        print self.sigma
+
+    def dtChangeValue(self, value):
+        smi, sma = 0, 100
+        dmi, dma = 0.001, 0.01
+        self.dt = linlin(value, smi, sma, dmi, dma)
+        print self.dt
+
+    def rChangeValue(self, value):
+        smi, sma = 0, 100
+        dmi, dma = 0.99, 1.0
+        self.r = linlin(value, smi, sma, dmi, dma)
+        print self.r
 
     def closeEvent(self, event):
 		reply = QtGui.QMessageBox.question(self, 'Message',
