@@ -1,7 +1,6 @@
 import numpy as np
 from scipy.signal import butter, lfilter
 
-# TODO all audio stuff in a separate class.
 class DSP():
     def butter_lowpass(self, cutoff, fs, order=5):
         nyq = 0.5 * fs
