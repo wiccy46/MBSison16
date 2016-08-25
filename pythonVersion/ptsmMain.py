@@ -34,9 +34,6 @@ class Ptsgui(QtGui.QMainWindow):
 
     def __init__(self):
         super(Ptsgui, self).__init__()
-
-        self.fs = FS()
-        self.bs = BLOCK()
         self.fifo = pyo.FIFOPlayer(maxsize=20, mul=[.5, .5])
         self.mixer = pyo.Mixer()
         self.mixer.addInput(0, self.fifo);
@@ -74,7 +71,7 @@ class Ptsgui(QtGui.QMainWindow):
                                                 self.norm_max, sigma=self.sigma, dt=self.dt, r=self.resistant, \
                                                 Nsamp=self.audioVecSize, compensation=self.m_comp)
         velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.windowing
-        velSound = DSP().butter_lowpass_filter(velSound, 2000.0, fs, 6)  # 6th order
+        velSound = DSP().butter_lowpass_filter(velSound, 2000.0, FS(), 6)  # 6th order
         # forceSound = forceSound / np.max(np.absolute(forceSound))
         stopevent = threading.Event()
         producer = threading.Thread(name="Compute audio signal", target=self.proc, args=[ stopevent, velSound])
@@ -90,16 +87,16 @@ class Ptsgui(QtGui.QMainWindow):
                 x = float(i) / 40 - 0.5
                 y = float(j) / 40 - 0.5
                 potmap[j, i] = Trajectory.potential_ds(self.data[:, 0:2], np.array([x, y]), self.sigma)
-        self.trjFigAx.matshow(potmap, cmap=plt.cm.gray, extent=(-0.5, 0.5, 0.5, -0.5))
+        self.trjFigAx.matshow(potmap, cmap=plt.cm.gray ,  extent=(-0.5, 0.5, 0.5, -0.5))
         self.trjFigAx.plot(self.data[:, 0], self.data[:, 1], ".")
+        self.trjFigAx.plot(trj[:, 1], trj[:, 2], "-", lw=0.7, c="green")
+        self.trjFigAx.plot(trj[0, 1], trj[0, 2], "o", c="yellow")
+        self.trjFigAx.plot(trj[self.audioVecSize - 1, 1], trj[self.audioVecSize - 1, 2], "x", c="red")
+        self.trjFigAx.set_xlim([-0.5, 0.5])
+        self.trjFigAx.set_ylim([-0.5, 0.5])
         self.trjFigCanvas.draw()
 
-        # resultWindow.gca().plot(trj[:, 1], trj[:, 2], "-", lw=0.7, c="green")
-        # # Mark the beginning and the end of trajectory .
-        # resultWindow.gca().plot(trj[0, 1], trj[0, 2], "o", c="yellow")
-        # resultWindow.gca().plot(trj[audioVecSize - 1, 1], trj[audioVecSize - 1, 2], "x", c="red")
-        # resultWindow.gca().axis([-0.6, 0.6, -0.6, 0.6])
-        # resultWindow.canvas.draw()
+
 
     def sendData(self):
         print "Send data"
@@ -167,10 +164,8 @@ class Ptsgui(QtGui.QMainWindow):
         plotBoxR.setSpacing(5)
         plotBoxR.addWidget(self.trjFigCanvas)
         plotBoxR.addWidget(self.trjFigToolbar)
-
         plotBox.addLayout(plotBoxL)
         plotBox.addLayout(plotBoxR)
-
         self.show()
 
 
