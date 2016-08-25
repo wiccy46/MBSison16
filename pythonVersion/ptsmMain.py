@@ -170,36 +170,50 @@ class Ptsgui(QtGui.QMainWindow):
         sigmaSlider.setRange(0, 100)
         sigmaSlider.setValue(50)
         sigmaSlider.valueChanged[int].connect(self.sigmaChangeValue)
+        sigmaDisplay = QtGui.QLineEdit()
+        sigmaDisplay.setFixedSize(50, 25)
 
+
+        dt_init = 0.005
         dtTitle = QtGui.QLabel('dt')
         dtSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
         dtSlider.setRange(0, 100)
-        temp = linlinInvert(0.005, 0, 100, 0.001, 0.01)
+        temp = linlinInvert(dt_init, 0, 100, 0.001, 0.01)
         # print "dtInit " +  str(linlin(temp,0, 100, 0.001, 0.01))
         dtSlider.setValue(temp)
         dtSlider.valueChanged[int].connect(self.dtChangeValue)
+        dtDisplay = QtGui.QLineEdit()
+        dtDisplay.setFixedSize(50, 25)
+        dtDisplay.setText(str(dt_init))
 
         rTitle = QtGui.QLabel('r')
         rSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
         rSlider.setRange(0, 100)
-        temp = linlinInvert(0.999, 0, 100, 0.99, 1.0)
+        r_init = 0.999
+        temp = linlinInvert(r_init, 0, 100, 0.99, 1.0)
         # print "rInit " + str(linlin(temp,0, 100, 0.99, 1.0))
         dtSlider.setValue(temp)
         rSlider.valueChanged[int].connect(self.rChangeValue)
+        rDisplay = QtGui.QLineEdit()
+        rDisplay.setFixedSize(50, 25)
+        rDisplay.setText(str(r_init))
 
 
         cltLeftBox = QtGui.QGridLayout()
-        cltLeftBox.addWidget(genDataButton, 1, 0)
+        cltLeftBox.addWidget(genDataButton, 1, 0 )
         cltLeftBox.addWidget(sendDataButton, 1, 1)
 
 
         cltRightBox = QtGui.QGridLayout()
         cltRightBox.addWidget(sigmaTitle, 1, 0)
         cltRightBox.addWidget(sigmaSlider, 1, 1)
+        cltRightBox.addWidget(sigmaDisplay, 1, 2)
         cltRightBox.addWidget(dtTitle, 2, 0)
         cltRightBox.addWidget(dtSlider, 2, 1)
+        cltRightBox.addWidget(dtDisplay, 2, 2)
         cltRightBox.addWidget(rTitle, 3, 0)
         cltRightBox.addWidget(rSlider, 3, 1)
+        cltRightBox.addWidget(rDisplay, 3, 2)
 
 
         # Sub layout 1
