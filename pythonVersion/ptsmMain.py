@@ -15,185 +15,19 @@ from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 
-def linlin(x, smi, sma, dmi, dma): return (x-smi)/(sma-smi)*(dma-dmi)+dmi
-# Turn list into integer, not used.
-def list2int(numbers):
-    return int(''.join(["%d" % x for x in numbers]))
-
 """
 Set up Audio server
 """
-# Is 1024 too large for the bufferSize in this case.
-fs = 44100/5
-bs = 1024
-s = pyo.Server(sr=fs, nchnls=2, buffersize=bs, duplex=0).boot()
+def FS():
+    return 44100/4
+
+def BLOCK():
+    return 1024
+
+# TODO put this in the GUI so that there is a button to stop.
+s = pyo.Server(sr=FS(), nchnls=2, buffersize=BLOCK(), duplex=0).boot()
 s.start()
 # Need to adjust the maxsize to test the speed.
-fifo = pyo.FIFOPlayer(maxsize=20, mul=[.5,.5])
-mixer = pyo.Mixer()
-mixer.addInput(0, fifo);mixer.setAmp(0,0,1)
-mixer.addInput(1, fifo);mixer.setAmp(1,1,1)
-mixer.out()
-fifo.out()
-
-
-
-class soundOption(object):
-    def velocity(self, event):
-        global which2play
-        which2play = "velocity"
-
-    def force(self, event):
-        global which2play
-        which2play = "force"
-
-def proc(fifo, stopevent, soundOutput):
-    fifo.put(soundOutput)
-
-
-
-# Well I am going to have new sliders anyway
-# TODO slider update in a class. or not...
-# Slider update function, for the interaction
-def sliderUpdate(val):
-    global dt, resistant
-    sigma = ssigma.val
-    dt = sdt.val
-    resistant = sresistant.val
-
-def sigmaUpdate(val):
-    global sigma, exp_table, delta_dis
-    sigma = ssigma.val
-    exp_table = Exptable().updateExpTable(sigma, delta_dis)
-
-
-# TODO all plotting in a class
-def plotPotential(data2d, fig2, sigma=.1, Nx=40, Ny=40):
-    # ensure the data sending for plotPotential is always in 2d.
-    potmap = np.zeros((Nx, Ny))
-    for i in range(Nx):
-        for j in range(Ny):
-            x = float(i) / Nx - 0.5
-            y = float(j) / Ny - 0.5
-            potmap[j, i] = Trajectory.potential_ds(data2d, np.array([x, y]), sigma)
-    fig2.clf()
-    plt.matshow(potmap, cmap=plt.cm.gray, extent=(-0.5, 0.5, 0.5, -0.5), fignum=2)
-    fig2.gca().plot(data[:, 0], data[:, 1], ".")
-    plt.show()
-
-# Currently not used.
-def plotTrajectory(data, sigma, trj, resultWindow, audioVecSize):
-    plotPotential(data[:, 0:2], fig2=resultWindow, sigma=sigma)
-    resultWindow.gca().plot(trj[:, 1], trj[:, 2], "-", lw=0.7, c="green")
-    # Mark the beginning and the end of trajectory .
-    resultWindow.gca().plot(trj[0, 1], trj[0, 2], "o", c="yellow")
-    resultWindow.gca().plot(trj[audioVecSize - 1, 1], trj[audioVecSize - 1, 2], "x", c="red")
-    resultWindow.gca().axis([-0.6, 0.6, -0.6, 0.6])
-    resultWindow.canvas.draw()
-
-
-
-def initializePot(data, N):  # It takes data and number of rows.
-    sctPlot = ax.scatter(data[:, 0], data[:, 1], c="blue", picker=2, s=[50] * N)
-    fig.subplots_adjust(bottom=0.25, left=0.1)
-    plt.grid(False)
-    plt.axis([-0.6, 0.6, -0.6, 0.6])
-    return sctPlot
-
-def spectrum(av, fs):
-    NFFT = 1024
-    plt.figure()
-    plt.specgram(av, NFFT=NFFT, Fs=fs, noverlap=900, cmap=plt.cm.gist_heat)
-    plt.show()
-
-# TODO: a button to regenerate new data set. And send through
-data = DataGen().datagen(4, 3,sigma = 0.4, minnr = 100, maxnr = 300)
-N, dim = data.shape[0], data.shape[1]
-# Create exp lookup
-
-exp_resolution = 1000000 # Resolution for lookup table
-delta_dis = np.linspace(0.0, dim, num = exp_resolution) # Range of distance difference.
-norm_max = dim
-m_comp, dt, resistant, sigma = 0.02, 0.005 , 0.999, 0.15 # init
-exp_table = Exptable().updateExpTable(sigma, delta_dis)
-fig, ax = plt.subplots()
-max_sigma = np.log(dim)/2.5 * 0.5 + 0.1
-t = 1.0 # Time in second per piece
-blockSize = 5000   # Buffer size for trajectory
-audioVecSize  = int(t *  blockSize)  # I define that 5000 steps will return 1 second of audio
-exp_table, norm_max = Exptable().createExpTable(dim, sigma, exp_resolution = exp_resolution)
-windowing = DSP().makeWindow(audioVecSize, rampUp = 0.05, rampDown = 0.05) # Windowing for audio
-velSound = np.zeros(audioVecSize)
-forceSound = np.zeros(dim*audioVecSize) # This is only meant for visualisation.
-drawResult = True
-which2play = "velocity" # Initialise the button press
-pos2d = np.zeros(2)
-resultWindow = plt.figure(2, figsize=(8, 8))
-# plotPotential(data[:, 0:2], fig2 = resultWindow,  sigma = sigma )
-
-sctPlot = initializePot(data, N)
-
-
-def on_pick(event):
-    # In the continuous mode, window shouldn't be used.
-    global data, sigma, resistant, dt, resultWindow, windowing, audioVecSize, \
-        norm_max, velSound, drawResult, dim, forceSound, fs
-    vel = (np.random.rand(dim) - 0.5)
-
-
-    ind = np.array(event.ind)  # Get the index of the clicked data
-    pos = np.array(data[ind[0], :])
-    # Get PTSM trajectory information
-    trj, junk, forceSound = Trajectory.PTSM(pos, data, vel, exp_table, exp_resolution, \
-                                 norm_max, sigma=sigma, dt=dt, r=resistant, \
-                                 Nsamp=audioVecSize, compensation=m_comp)
-    # -------------------------------------------#
-    # Process sound #----------
-    velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * windowing
-    velSound = DSP().butter_lowpass_filter(velSound, 2000.0, fs, 6)  # 6th order
-    forceSound = forceSound / np.max(np.absolute(forceSound))
-    stopevent = threading.Event()
-    producer = threading.Thread(name="Compute audio signal", target=proc, args=[fifo, stopevent, velSound])
-    producer.start()
-    if drawResult == True:
-        #         plotTrajectory(data = data, sigma = sigma, trj = trj,
-        #                        resultWindow = resultWindow, audioVecSize = resultWindow)
-        plotPotential(data[:, 0:2], fig2=resultWindow, sigma=sigma)
-        resultWindow.gca().plot(trj[:, 1], trj[:, 2], "-", lw=0.7, c="green")
-        # Mark the beginning and the end of trajectory .
-        resultWindow.gca().plot(trj[0, 1], trj[0, 2], "o", c="yellow")
-        resultWindow.gca().plot(trj[audioVecSize - 1, 1], trj[audioVecSize - 1, 2], "x", c="red")
-        resultWindow.gca().axis([-0.6, 0.6, -0.6, 0.6])
-        resultWindow.canvas.draw()
-
-
-# ---------------#
-# Create a slider for setting up the velocity
-axcolor = 'lightgoldenrodyellow'
-# Create sliders for sigma and dt.
-axSigma = plt.axes([0.1, 0.1, 0.8, 0.02], axisbg=axcolor)
-axDt = plt.axes([0.1, 0.06, 0.8, 0.02], axisbg=axcolor)
-axR = plt.axes([0.1, 0.02, 0.8, 0.02], axisbg=axcolor)
-axB1 = plt.axes([0.1, 0.13, 0.1, 0.075], axisbg=axcolor)
-axB2 = plt.axes([0.21, 0.13, 0.1, 0.075], axisbg=axcolor)
-
-ssigma = plt.Slider(axSigma, "Sigma", 0.001, max_sigma, valinit=sigma, color='blue')
-sdt = plt.Slider(axDt, "dt", 0.001, 0.01, valinit=dt, color='blue')
-sresistant = plt.Slider(axR, "r", 0.99, 1.0, valinit=resistant, color='blue')
-
-choice = soundOption()
-
-b1 = plt.Button(axB1, "Velocity")
-b1.on_clicked(choice.velocity)
-b2 = plt.Button(axB2, "Force")
-b2.on_clicked(choice.force)
-
-ssigma.on_changed(sigmaUpdate)
-sdt.on_changed(sliderUpdate)
-sresistant.on_changed(sliderUpdate)
-resultWindow = plt.figure(2, figsize=(8, 8))
-fig.canvas.mpl_connect('pick_event', on_pick)
-# plt.show()
 
 
 class Ptsgui(QtGui.QMainWindow):
@@ -201,11 +35,24 @@ class Ptsgui(QtGui.QMainWindow):
     def __init__(self):
         super(Ptsgui, self).__init__()
 
+        self.fs = FS()
+        self.bs = BLOCK()
+        self.fifo = pyo.FIFOPlayer(maxsize=20, mul=[.5, .5])
+        self.mixer = pyo.Mixer()
+        self.mixer.addInput(0, self.fifo);
+        self.mixer.setAmp(0, 0, 1)
+        self.mixer.addInput(1, self.fifo);
+        self.mixer.setAmp(1, 1, 1)
+        self.mixer.out()
+        self.fifo.out()
+
+
         self.initUI()
         self.data, self.pos = np.zeros(2), np.zeros(2)
         self.vel , self.t = 0, 1.
         self.exp_table = np.zeros(1) # Initialise the exp table
         self.norm_max = 0
+        self.exp_resolution = 1000000  # Resolution for lookup table
 
         # TODO These parameter should become sliders
         self.m_comp, self.dt, self.resistant, self.sigma = 0.02, 0.005, 0.999, 0.15  # init
@@ -213,38 +60,59 @@ class Ptsgui(QtGui.QMainWindow):
         self.t = 1.0  # Time in second per piece, TODO a para
         self.blockSize = 5000  # Buffer size for trajectory TODO a para
         self.audioVecSize = int(self.t * self.blockSize)  # I define that 5000 steps will return 1 second of audio
+        self.windowing = DSP().makeWindow(self.audioVecSize, rampUp=0.05, rampDown=0.05)  # Windowing for audio
 
+    def proc(self, stopevent, soundOutput):
+        self.fifo.put(soundOutput)
 
     def datafigon_pick(self, event):
         ind = np.array(event.ind)  # Get the index of the clicked data
-        self.pos = np.array(data[ind[0], :])
-        self.vel = np.random.rand(dim) - 0.5
+        self.pos = np.array(self.data[ind[0], :])
+        self.vel = np.random.rand(self.dim) - 0.5
 
-        trj, junk, forceSound = Trajectory.PTSM(self.pos, self.data, self.vel, self.exp_table, exp_resolution, \
+        trj, junk, forceSound = Trajectory.PTSM(self.pos, self.data, self.vel, self.exp_table, self.exp_resolution, \
                                                 self.norm_max, sigma=self.sigma, dt=self.dt, r=self.resistant, \
                                                 Nsamp=self.audioVecSize, compensation=self.m_comp)
-        velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * windowing
+        velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.windowing
         velSound = DSP().butter_lowpass_filter(velSound, 2000.0, fs, 6)  # 6th order
         # forceSound = forceSound / np.max(np.absolute(forceSound))
         stopevent = threading.Event()
-        producer = threading.Thread(name="Compute audio signal", target=proc, args=[fifo, stopevent, velSound])
+        producer = threading.Thread(name="Compute audio signal", target=self.proc, args=[ stopevent, velSound])
         producer.start()
+        self.drawTrj(trj)
 
 
+    def drawTrj(self, trj): # Plot trajectory
+        self.trjFigAx.clear()
+        potmap = np.zeros((40, 40))
+        for i in range(40):
+            for j in range(40):
+                x = float(i) / 40 - 0.5
+                y = float(j) / 40 - 0.5
+                potmap[j, i] = Trajectory.potential_ds(self.data[:, 0:2], np.array([x, y]), self.sigma)
+        self.trjFigAx.matshow(potmap, cmap=plt.cm.gray, extent=(-0.5, 0.5, 0.5, -0.5))
+        self.trjFigAx.plot(self.data[:, 0], self.data[:, 1], ".")
+        self.trjFigCanvas.draw()
+
+        # resultWindow.gca().plot(trj[:, 1], trj[:, 2], "-", lw=0.7, c="green")
+        # # Mark the beginning and the end of trajectory .
+        # resultWindow.gca().plot(trj[0, 1], trj[0, 2], "o", c="yellow")
+        # resultWindow.gca().plot(trj[audioVecSize - 1, 1], trj[audioVecSize - 1, 2], "x", c="red")
+        # resultWindow.gca().axis([-0.6, 0.6, -0.6, 0.6])
+        # resultWindow.canvas.draw()
 
     def sendData(self):
         print "Send data"
 
     def genData(self):
+        self.dataFigAx.clear()
         self.data = DataGen().datagen(4, 3, sigma=0.4, minnr=100, maxnr=300)
         self.N, self.dim = self.data.shape[0], self.data.shape[1]
-        self.norm_max = dim
-        exp_resolution = 1000000  # Resolution for lookup table
-        delta_dis = np.linspace(0.0, self.dim, num=exp_resolution)  # Range of distance difference.
+        self.norm_max = self.dim
+        delta_dis = np.linspace(0.0, self.dim, num=self.exp_resolution)  # Range of distance difference.
         self.exp_table = Exptable().updateExpTable(self.sigma, delta_dis)
-        self.dataFigAx.scatter(data[:, 0], data[:, 1], c="blue", picker=2, s=[50] * N)
+        self.dataFigAx.scatter(self.data[:, 0], self.data[:, 1], c="blue", picker=2, s=[50] *self.N)
         self.dataFigCanvas.draw()
-        print self.data
 
     def initUI(self):
         self.statusBar().showMessage('Ready')  # Tell user to wait while sending data
