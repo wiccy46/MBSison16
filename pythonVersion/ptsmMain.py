@@ -22,6 +22,8 @@ Set up Audio server
 
 FS = 44100/4
 BLOCK = 1024
+HOMEIP = '192.168.178.47'
+OFFICEIP = "129.70.149.23"
 
 
 # TODO put this in the GUI so that there is a button to stop.
@@ -113,7 +115,8 @@ class Ptsgui(QtGui.QMainWindow):
         self.dataFigCanvas.draw()
 
     def initUI(self):
-        self.statusBar().showMessage('Ready')  # Tell user to wait while sending data
+
+        self.statusBar().showMessage('Ready, Move on each item to see user tip.')  # Tell user to wait while sending data
         self.setGeometry(50, 50, 1050, 650)
         self.setWindowTitle('PTS')
 
@@ -149,43 +152,44 @@ class Ptsgui(QtGui.QMainWindow):
         plotBoxR.addWidget(self.trjFigToolbar)
 
         #-----------------
-
-
         # cltBox contents (sublay 1)
         genDataButton = QtGui.QPushButton('Generate Data', self)
-        genDataButton.setToolTip('This button randomise a \
-            set of data based on the input dimension and cluster amount.')
+        genDataButton.setToolTip('This button randomise a '
+                                 'set of data based on the input dimension and cluster amount.')
         genDataButton.resize(genDataButton.sizeHint())
-        # genDataButton.move(50, 550)
         genDataButton.clicked.connect(self.genData)
         sendDataButton = QtGui.QPushButton("Send Data", self)
         sendDataButton.resize(genDataButton.sizeHint())
-        # sendDataButton.move(200, 550)
         sendDataButton.clicked.connect(self.sendData)
+        sendDataButton.setToolTip('Send the first 2 columns of data to Android device for plotting.')
         #----------------------
 
         #TODO need a display box.
         sigmaTitle = QtGui.QLabel('Sigma')
+        sigmaTitle.resize(sigmaTitle.sizeHint())
         sigmaSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
+        sigmaSlider.setToolTip('Large sigma results in 1 global minimum while small sigma results in local minimum '
+                               'in each data point')
+
         sigmaSlider.setRange(0, 100)
         sigmaSlider.setValue(50)
         sigmaSlider.valueChanged[int].connect(self.sigmaChangeValue)
         self.sigmaDisplay = QtGui.QLineEdit()
-        self.sigmaDisplay.setFixedSize(50, 25)
+        self.sigmaDisplay.setFixedSize(50, 20)
 
 
         dt_init = 0.005
         dtTitle = QtGui.QLabel('dt')
         dtSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
+        dtSlider.setToolTip('A larger dt will lead to a bigger distance change at each iteration.')
         dtSlider.setRange(0, 100)
         temp = linlinInvert(dt_init, 0, 100, 0.001, 0.01)
 
-        # print "dtInit " +  str(linlin(temp,0, 100, 0.001, 0.01))
-
         dtSlider.valueChanged[int].connect(self.dtChangeValue)
         dtSlider.setValue(temp)
+
         self.dtDisplay = QtGui.QLineEdit()
-        self.dtDisplay.setFixedSize(50, 25)
+        self.dtDisplay.setFixedSize(50, 20)
         self.dtDisplay.setText(str(dt_init))
 
         rTitle = QtGui.QLabel('r')
@@ -196,16 +200,85 @@ class Ptsgui(QtGui.QMainWindow):
         # print "rInit " + str(linlin(temp,0, 100, 0.99, 1.0))
         rSlider.setValue(temp)
         rSlider.valueChanged[int].connect(self.rChangeValue)
+        rSlider.setToolTip('r is the recipricate of friction. at r = 1, the particle will have no velocity lost.')
         self.rDisplay = QtGui.QLineEdit()
-        self.rDisplay.setFixedSize(50, 25)
+        self.rDisplay.setFixedSize(50, 20)
         self.rDisplay.setText(str(r_init))
+        #----------------------#
+
+
+
+
+
+        # left pannel.
+
+
+        dimTitle = QtGui.QLabel('Dimension')
+        dimTitle.setFixedSize(70, 20)
+        self.dimDisplay = QtGui.QSpinBox()
+        # self.dimDisplay.setValidator(QtGui.QIntValidator())
+        self.dimDisplay.setRange(2, 1000)
+        self.dimDisplay.setValue(3)
+        self.dimDisplay.setFixedSize(50, 20)
+        self.dimDisplay.resize(self.dimDisplay.sizeHint())
+        self.dimDisplay.setToolTip('Choose the dimensionality of the data. Type = int, Min = 2, Max = 1000')
+
+
+        ncTitle = QtGui.QLabel('Clusters')
+        # ncTitle.resize(dimTitle.sizeHint())
+        ncTitle.setFixedSize(70, 20)
+        self.ncDisplay = QtGui.QSpinBox()
+        self.ncDisplay.setValue(4)
+        self.ncDisplay.setRange(1, 1000)
+        self.ncDisplay.setFixedSize(50, 20)
+        self.ncDisplay.resize(self.ncDisplay.sizeHint())
+        self.ncDisplay.setToolTip('Choose the number of clusters for the simulated data. Type = int, Min = 1, Max = 1000')
+
+        nrminTitle = QtGui.QLabel('Nr_min')
+        nrminTitle.setFixedSize(70, 20)
+        # nrminTitle.resize(dimTitle.sizeHint())
+        self.nrminDisplay = QtGui.QSpinBox()
+        self.nrminDisplay.setRange(10, 300)
+        self.nrminDisplay.setValue(50)
+        self.nrminDisplay.setFixedSize(50, 20)
+        self.nrminDisplay.resize(self.nrminDisplay.sizeHint())
+        self.nrminDisplay.setToolTip('Choose the minimum number of row for each clusters. 10~300, type: int')
+        # Use the changed value box to detect is nr_max < mr_min
+
+        nrmaxTitle = QtGui.QLabel('Nr_max')
+        nrmaxTitle.setFixedSize(50, 20)
+        # nrmaxTitle.resize(dimTitle.sizeHint())
+        self.nrmaxDisplay = QtGui.QSpinBox()
+        self.nrmaxDisplay.setRange(100, 600)
+        self.nrmaxDisplay.setValue(200)
+        self.nrmaxDisplay.setFixedSize(50, 20)
+        self.nrmaxDisplay.resize(self.nrmaxDisplay.sizeHint())
+        self.nrmaxDisplay.setToolTip('Choose the maximum number of row for each clusters. 100~600, type: int')
+        # Use the changed value box to detect is nr_max < mr_min
+
+
+
+        ipTitle = QtGui.QLabel('Tablet IP')
+        ipTitle.setFixedSize(80, 20)
+        # ipTitle.resize(dimTitle.sizeHint())
+        self.ipDisplay = QtGui.QLineEdit()
+        self.ipDisplay.setText(HOMEIP)
+        # self.ipDisplay.resize(self.dimDisplay.sizeHint())
+        self.ipDisplay.setFixedSize(106, 20)
 
 
         cltLeftBox = QtGui.QGridLayout()
-        cltLeftBox.addWidget(genDataButton, 1, 0 )
-        cltLeftBox.addWidget(sendDataButton, 1, 1)
+        cltLeftBox.addWidget(ncTitle,1 , 0), cltLeftBox.addWidget(self.ncDisplay, 1, 1)
+        cltLeftBox.addWidget(dimTitle, 1, 2), cltLeftBox.addWidget(self.dimDisplay, 1, 3)
+        cltLeftBox.addWidget(nrminTitle, 2, 0), cltLeftBox.addWidget(self.nrminDisplay, 2, 1)
+        cltLeftBox.addWidget(nrmaxTitle, 2, 2), cltLeftBox.addWidget(self.nrmaxDisplay, 2, 3)
+        cltLeftBox.addWidget(genDataButton, 3, 0 )
+        cltLeftBox.addWidget(ipTitle, 4,0), cltLeftBox.addWidget(self.ipDisplay, 4, 1)
+        cltLeftBox.addWidget(sendDataButton, 6, 0, 6, 4)
 
 
+
+        # Add right box
         cltRightBox = QtGui.QGridLayout()
         cltRightBox.addWidget(sigmaTitle, 1, 0)
         cltRightBox.addWidget(sigmaSlider, 1, 1)
@@ -234,6 +307,7 @@ class Ptsgui(QtGui.QMainWindow):
 
         self.show()
 
+
     def sigmaChangeValue(self, value):
         smi, sma = 0, 100
         dmi, dma = 0.001, self.max_sigma
@@ -246,7 +320,6 @@ class Ptsgui(QtGui.QMainWindow):
         dmi, dma = 0.001, 0.01
         self.dt = linlin(value, smi, sma, dmi, dma)
         self.dtDisplay.setText(str(self.dt))
-        # print self.dt
 
     def rChangeValue(self, value):
         smi, sma = 0, 100
