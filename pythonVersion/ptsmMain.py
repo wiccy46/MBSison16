@@ -66,6 +66,81 @@ class Ptsgui(QtGui.QMainWindow):
         self.windowing = DSP().makeWindow(self.audioVecSize, rampUp=0.05, rampDown=0.05)  # Windowing for audio
         self.initUI()
 
+    # Hasn't tested yet.
+    class Listening(object):
+        def __init__(self, data, ip, port=5678):
+            self.receive_address = ip, port
+            # Print other parameters here to test if I can access all the para.
+
+        def trigger_handler(self, addr, tags, stuff, source):
+            self.sortedPos = np.array([stuff[0], stuff[1]])
+            # Find nearest neighbour
+            # TODO, exclude playing sound if there is no neighbouring point < dis_thres
+            # if nearest d < dis_thres, play , else print "no neighbour"
+
+            deltas = self.data[:, 0:2] - self.sortedPos
+            dist_2 = np.einsum('ij,ij->i', deltas, deltas)
+            idx = np.argmin(dist_2)
+            vel = np.random.rand(self.dim) - 0.5  # Need to be controllable by pressure
+            self.pos = np.array(self.data[idx, :])
+
+            if (self.data):
+                trj, junk, forceSound = Trajectory.PTSM(self.pos, self.data, self.vel, self.exp_table,
+                                                        self.exp_resolution, self.norm_max, sigma=self.sigma,
+                                                        dt=self.dt, r=self.resistant,
+                                                        Nsamp=self.audioVecSize, compensation=self.m_comp)
+                velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.windowing
+                velSound = DSP().butter_lowpass_filter(velSound, 2000.0, FS, 6)  # 6th order
+                # forceSound = forceSound / np.max(np.absolute(forceSound))
+                stopevent = threading.Event()
+                producer = threading.Thread(name="Compute audio signal", target=self.proc,
+                                            args=[stopevent, velSound])
+                producer.start()
+
+                # Try to draw trj here. might fail though
+                # self.drawTrj(trj)
+
+            else:
+                self.statusBar().showMessage('Receiving trigger but no data available.')
+
+        def spawn(self):
+            print"Server Created."
+            self.receiveServer = OSC.OSCServer(
+                self.receive_address)  # create a serve to receive OSC from the tablet
+            self.receiveServer.addDefaultHandlers()
+
+        def stop_handler(self, addr, tags, stuff, source):
+            # Close the OSC server
+            print "\nClosing OSCServer."
+            self.receiveServer.close()
+            print "Waiting for Server-thread to finish"
+            try:
+                self.emorating_oscServer.join()  ##!!!
+                print "Done"
+            except AttributeError:
+                print "Done"
+
+        def add_handler(self):
+            self.receiveServer.addMsgHandler("/trigger", self.trigger_handler)
+            self.receiveServer.addMsgHandler("/stop", self.stop_handler)
+
+        def start(self):
+            print "\nStarting OSCServer."
+            self.emorating_oscServer = threading.Thread(target=self.receiveServer.serve_forever)
+            self.emorating_oscServer.start()
+            print "\nOSCServer established."
+
+        def stop(self):
+            # Close the OSC server
+            print "\nClosing OSCServer."
+            self.receiveServer.close()
+            print "Waiting for Server-thread to finish"
+            try:
+                self.emorating_oscServer.join()  ##!!!
+                print "Done"
+            except AttributeError:
+                print "Done"
+
     def proc(self, stopevent, soundOutput):
         self.fifo.put(soundOutput)
 
@@ -360,6 +435,9 @@ class Ptsgui(QtGui.QMainWindow):
 			event.accept()
 		else:
 			event.ignore()
+
+
+
 
 
 def main():
