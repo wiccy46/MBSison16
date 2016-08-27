@@ -11,6 +11,7 @@ from threading import Thread
 from lib.Exptable import Exptable
 from lib.DSP import DSP
 from lib.DataGen import DataGen
+from lib.OSCsend import OSCsend
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
@@ -18,7 +19,6 @@ from matplotlib.figure import Figure
 """
 Set up Audio server
 """
-
 
 FS = 44100/4
 BLOCK = 1024
@@ -48,11 +48,14 @@ class Ptsgui(QtGui.QMainWindow):
         self.mixer.out()
         self.fifo.out()
 
-        self.data, self.pos = np.zeros(2), np.zeros(2)
+        self.data, self.pos, self.N = np.zeros(2), np.zeros(2), 0
+        self.ip = HOMEIP
+        self.genDim, self.genNrmin, self.genNrmax, self.genNc = 3, 50, 200,  4 # Init gen data para
+
         self.vel , self.t = 0, 1.
         self.exp_table = np.zeros(1) # Initialise the exp table
         self.norm_max = 0
-        self.max_sigma = 0.4
+        self.max_sigma = 0.4 # Use to limit sigma slider based on dim
         self.exp_resolution = 1000000  # Resolution for lookup table
 
         # TODO These parameter should become sliders
@@ -101,11 +104,23 @@ class Ptsgui(QtGui.QMainWindow):
         self.trjFigCanvas.draw()
 
     def sendData(self):
-        print "Send data"
+        self.statusBar().showMessage('Sending data, please wait ...')
+        if(self.N == 0):
+            androidClient = OSCsend(self.ip, 7012)
+            nr = 100
+            sortedData = self.data[self.data[:, 0].argsort()]
+            for i in range(self.N / nr):
+                androidClient.osc_msg(nr=nr, msg=sortedData[i * nr: i * nr + nr, 0:2])
+                time.sleep(1.5)
+            androidClient.osc_msg(nr=self.N % nr, msg=sortedData[self.N - self.N % nr: self.N, 0:2])
+        else:
+            self.statusBar().showMessage('Data not generated yet, please generate data first.')
+        self.statusBar().showMessage('Finished sending.')
+
 
     def genData(self):
         self.dataFigAx.clear()
-        self.data = DataGen().datagen(4, 3, sigma=0.4, minnr=100, maxnr=300)
+        self.data = DataGen().datagen(self.genDim, self.genNc, sigma=0.4, minnr=self.genNrmin, maxnr=self.genNrmax)
         self.N, self.dim = self.data.shape[0], self.data.shape[1]
         self.norm_max = self.dim
         self.max_sigma = np.log(self.dim) / 2.5 * 0.5 + 0.1
@@ -115,8 +130,7 @@ class Ptsgui(QtGui.QMainWindow):
         self.dataFigCanvas.draw()
 
     def initUI(self):
-
-        self.statusBar().showMessage('Ready, Move on each item to see user tip.')  # Tell user to wait while sending data
+        self.statusBar().showMessage('Move on each item to see user tip.')  # Tell user to wait while sending data
         self.setGeometry(50, 50, 1050, 650)
         self.setWindowTitle('PTS')
 
@@ -124,8 +138,6 @@ class Ptsgui(QtGui.QMainWindow):
         self.widget = QtGui.QWidget()
         self.widget.setLayout(mainlayout)
         self.setCentralWidget(self.widget)  # Set main layout to layout of widget!!!
-
-
 
         # plotBox contents (sublay 1)
         self.dataFig = plt.figure()
@@ -170,7 +182,6 @@ class Ptsgui(QtGui.QMainWindow):
         self.sigmaSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
         self.sigmaSlider.setToolTip('Large sigma results in 1 global minimum while small sigma results in local minimum '
                                'in each data point')
-
         self.sigmaSlider.setRange(0, 100)
         self.sigmaSlider.setValue(50)
         self.sigmaSlider.valueChanged[int].connect(self.changeValue)
@@ -206,8 +217,6 @@ class Ptsgui(QtGui.QMainWindow):
         #----------------------#
 
 
-
-
         # left pannel.
         dimTitle = QtGui.QLabel('Dimension')
         dimTitle.setFixedSize(70, 20)
@@ -221,9 +230,7 @@ class Ptsgui(QtGui.QMainWindow):
         self.dimDisplay.valueChanged[int].connect(self.changeValue)
         # self.rSlider.valueChanged[int].connect(self.changeValue)
 
-
         ncTitle = QtGui.QLabel('Clusters')
-
         ncTitle.setFixedSize(70, 20)
         self.ncDisplay = QtGui.QSpinBox()
         self.ncDisplay.setValue(4)
@@ -276,8 +283,6 @@ class Ptsgui(QtGui.QMainWindow):
         cltLeftBox.addWidget(ipTitle, 4,0), cltLeftBox.addWidget(self.ipDisplay, 4, 1)
         cltLeftBox.addWidget(sendDataButton, 6, 0, 6, 4)
 
-
-
         # Add right box
         cltRightBox = QtGui.QGridLayout()
         cltRightBox.addWidget(sigmaTitle, 1, 0)
@@ -307,6 +312,7 @@ class Ptsgui(QtGui.QMainWindow):
 
     def ipChangeValue(self):
         print self.ipDisplay.text()
+        self.ip = self.ipDisplay.text()
 
 
     def changeValue(self,value):
@@ -315,11 +321,13 @@ class Ptsgui(QtGui.QMainWindow):
             dmi, dma = 0.001, self.max_sigma
             self.sigma = linlin(value, smi, sma, dmi, dma)
             self.sigmaDisplay.setText(str(self.sigma))
+
         elif self.sender() == self.dtSlider:
             smi, sma = 0, 100
             dmi, dma = 0.001, 0.01
             self.dt = linlin(value, smi, sma, dmi, dma)
             self.dtDisplay.setText(str(self.dt))
+
         elif self.sender() == self.rSlider:
             smi, sma = 0, 100
             dmi, dma = 0.99, 1.0
@@ -329,13 +337,17 @@ class Ptsgui(QtGui.QMainWindow):
 
         elif self.sender() == self.dimDisplay:
             print "dimension = " + str(value)
+            self.genDim = value
         elif self.sender() == self.ncDisplay:
             print "nc = " + str(value)
+            self.genNc = value
         elif self.sender() == self.nrminDisplay:
             print "nr min = " + str(value)
+            self.genNrmin = value
         elif self.sender() == self.nrmaxDisplay:
             print "nr max = " + str(value)
-        else: pass
+            self.genNrmax = value
+        else: print "Unrecognised input source."
 
 
 
