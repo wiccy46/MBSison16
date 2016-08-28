@@ -23,6 +23,7 @@ Set up Audio server
 FS = 44100/4
 BLOCK = 1024
 HOMEIP = '192.168.178.47'
+SELFIP = '127.0.0.1'
 OFFICEIP = "129.70.149.23"
 
 
@@ -96,10 +97,8 @@ class Ptsgui(QtGui.QMainWindow):
                 producer = threading.Thread(name="Compute audio signal", target=self.proc,
                                             args=[stopevent, velSound])
                 producer.start()
-
                 # Try to draw trj here. might fail though
                 # self.drawTrj(trj)
-
             else:
                 self.statusBar().showMessage('Receiving trigger but no data available.')
 
@@ -160,7 +159,6 @@ class Ptsgui(QtGui.QMainWindow):
         producer.start()
         self.drawTrj(trj)
 
-
     def drawTrj(self, trj): # Plot trajectory
         self.trjFigAx.clear()
         potmap = np.zeros((40, 40))
@@ -179,18 +177,21 @@ class Ptsgui(QtGui.QMainWindow):
         self.trjFigCanvas.draw()
 
     def sendData(self):
+        print "sendData called"
         self.statusBar().showMessage('Sending data, please wait ...')
-        if(self.N == 0):
+        if self.N != 0:
             androidClient = OSCsend(self.ip, 7012)
             nr = 100
             sortedData = self.data[self.data[:, 0].argsort()]
             for i in range(self.N / nr):
                 androidClient.osc_msg(nr=nr, msg=sortedData[i * nr: i * nr + nr, 0:2])
                 time.sleep(1.5)
+                print "sending data."
             androidClient.osc_msg(nr=self.N % nr, msg=sortedData[self.N - self.N % nr: self.N, 0:2])
+            self.statusBar().showMessage('Finished sending.')
         else:
             self.statusBar().showMessage('Data not generated yet, please generate data first.')
-        self.statusBar().showMessage('Finished sending.')
+
 
 
     def genData(self):
