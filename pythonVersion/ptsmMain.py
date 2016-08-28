@@ -52,32 +52,33 @@ class Listening(object):
     def trigger_handler(self, addr, tags, stuff, source):
         print "received trigger."
         self.sortedPos = np.array([stuff[0], stuff[1]])
-        # Find nearest neighbour
-        # TODO, exclude playing sound if there is no neighbouring point < dis_thres
-        # if nearest d < dis_thres, play , else print "no neighbour"
-
+        # # Find nearest neighbour
+        # # TODO, exclude playing sound if there is no neighbouring point < dis_thres
+        # # if nearest d < dis_thres, play , else print "no neighbour"
+        #
         deltas = self.gui.data[:, 0:2] - self.sortedPos
         dist_2 = np.einsum('ij,ij->i', deltas, deltas)
         idx = np.argmin(dist_2)
         vel = np.random.rand(self.gui.dim) - 0.5  # Need to be controllable by pressure
         pos = np.array(self.gui.data[idx, :])
+        #
 
-        if (self.gui.data):
-            trj, junk, forceSound = Trajectory.PTSM(pos, self.gui.data, vel, self.gui.exp_table,
-                                                    self.gui.exp_resolution, self.gui.norm_max, sigma=self.gui.sigma,
-                                                    dt=self.gui.dt, r=self.gui.r,
-                                                    Nsamp=self.gui.audioVecSize, compensation=self.gui.m_comp)
-            velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.windowing
-            velSound = DSP().butter_lowpass_filter(velSound, 2000.0, FS, 6)  # 6th order
-            # forceSound = forceSound / np.max(np.absolute(forceSound))
-            stopevent = threading.Event()
-            producer = threading.Thread(name="Compute audio signal", target=self.gui.proc,
-                                        args=[stopevent, velSound])
-            producer.start()
-            # Try to draw trj here. might fail though
-            # self.gui.drawTrj(trj)
-        else:
-            self.gui.statusBar().showMessage('Receiving trigger but no data available.')
+        trj, junk, forceSound = Trajectory.PTSM(pos, self.gui.data, vel, self.gui.exp_table,
+                                                self.gui.exp_resolution, self.gui.norm_max, sigma=self.gui.sigma,
+                                                dt=self.gui.dt, r=self.gui.r,
+                                                Nsamp=self.gui.audioVecSize, compensation=self.gui.m_comp)
+        velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.gui.windowing
+        velSound = DSP().butter_lowpass_filter(velSound, 2000.0, FS, 6)  # 6th order
+        # forceSound = forceSound / np.max(np.absolute(forceSound))
+        stopevent = threading.Event()
+
+        print velSound
+        producer = threading.Thread(name="Compute audio signal", target=self.gui.proc,
+                                    args=[stopevent, velSound])
+        producer.start()
+        # Try to draw trj here. might fail though
+        self.gui.drawTrj(trj)
+
 
     def spawn(self):
         global  socketError
@@ -178,7 +179,7 @@ class Ptsgui(QtGui.QMainWindow):
         velSound = DSP().butter_lowpass_filter(velSound, 2000.0, FS, 6)  # 6th order
         # forceSound = forceSound / np.max(np.absolute(forceSound))
         stopevent = threading.Event()
-        producer = threading.Thread(name="Compute audio signal", target=self.proc, args=[ stopevent, velSound])
+        producer = threading.Thread(name="Compute audio signal", target=self.proc, args=[stopevent, velSound])
         producer.start()
         self.drawTrj(trj)
 
@@ -222,16 +223,18 @@ class Ptsgui(QtGui.QMainWindow):
                 androidClient.osc_msg(nr=nr, msg=sortedData[i * nr: i * nr + nr, 0:2])
                 time.sleep(0.5)
             androidClient.osc_msg(nr=self.N % nr, msg=sortedData[self.N - self.N % nr: self.N, 0:2])
-            # Start listener
-            self.androidListener = Listening(gui =  self, data=self.data, ip = SELFIP, port = LISTENPORT)
-            # self.androidListener.spawn()
-            # print socketError
-            # if (socketError):
-            #     self.statusBar().showMessage('Error, Click "Clear Listener" and try again.')
-            # else:
-            #     self.androidListener.add_handler()
-            #     self.androidListener.start()
-            #     self.statusBar().showMessage('Finished sending, created listener.')
+
+
+            # Start listening
+            self.androidListener = Listening(gui = self, ip = SELFIP, port = LISTENPORT)
+            self.androidListener.spawn()
+            print socketError
+            if (socketError):
+                self.statusBar().showMessage('Error, Click "Clear Listener" and try again.')
+            else:
+                self.androidListener.add_handler()
+                self.androidListener.start()
+                self.statusBar().showMessage('Finished sending, created listener.')
 
         else:
             self.statusBar().showMessage('Data not generated yet, please generate data first.')
@@ -490,11 +493,12 @@ class Ptsgui(QtGui.QMainWindow):
 		reply = QtGui.QMessageBox.question(self, 'Message',
             "Are you sure to quit?", QtGui.QMessageBox.Yes |
             QtGui.QMessageBox.No, QtGui.QMessageBox.Yes)
-
 		if reply == QtGui.QMessageBox.Yes:
+
 			event.accept()
 		else:
 			event.ignore()
+
 
 
 
