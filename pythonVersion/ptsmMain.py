@@ -23,8 +23,11 @@ Set up Audio server
 FS = 44100/4
 BLOCK = 1024
 HOMEIP = '192.168.178.47'
-SELFIP = '127.0.0.1'
+SELFIP = socket.gethostbyname(socket.getfqdn())
 OFFICEIP = "129.70.149.23"
+LISTENPORT = 5678
+SENDPORT = 7012
+socketError = False
 
 
 # TODO put this in the GUI so that there is a button to stop.
@@ -34,6 +37,96 @@ s.start()
 
 def linlin(x, smi, sma, dmi, dma): return (x-smi)/float(sma-smi)*(dma-dmi)+dmi
 def linlinInvert(x, smi, sma, dmi, dma): return (x-dmi)*(sma-smi)/(dma-dmi) + smi
+
+
+# Hasn't tested yet.
+class Listening(object):
+    def __init__(self, gui,  ip, port=LISTENPORT):
+        self.gui = gui
+        self.receive_address = ip, port
+
+    def printpara(self):
+        print self.gui.sigma
+
+
+    def trigger_handler(self, addr, tags, stuff, source):
+        print "received trigger."
+        self.sortedPos = np.array([stuff[0], stuff[1]])
+        # Find nearest neighbour
+        # TODO, exclude playing sound if there is no neighbouring point < dis_thres
+        # if nearest d < dis_thres, play , else print "no neighbour"
+
+        deltas = self.gui.data[:, 0:2] - self.sortedPos
+        dist_2 = np.einsum('ij,ij->i', deltas, deltas)
+        idx = np.argmin(dist_2)
+        vel = np.random.rand(self.gui.dim) - 0.5  # Need to be controllable by pressure
+        pos = np.array(self.gui.data[idx, :])
+
+        if (self.gui.data):
+            trj, junk, forceSound = Trajectory.PTSM(pos, self.gui.data, vel, self.gui.exp_table,
+                                                    self.gui.exp_resolution, self.gui.norm_max, sigma=self.gui.sigma,
+                                                    dt=self.gui.dt, r=self.gui.r,
+                                                    Nsamp=self.gui.audioVecSize, compensation=self.gui.m_comp)
+            velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.windowing
+            velSound = DSP().butter_lowpass_filter(velSound, 2000.0, FS, 6)  # 6th order
+            # forceSound = forceSound / np.max(np.absolute(forceSound))
+            stopevent = threading.Event()
+            producer = threading.Thread(name="Compute audio signal", target=self.gui.proc,
+                                        args=[stopevent, velSound])
+            producer.start()
+            # Try to draw trj here. might fail though
+            # self.gui.drawTrj(trj)
+        else:
+            self.gui.statusBar().showMessage('Receiving trigger but no data available.')
+
+    def spawn(self):
+        global  socketError
+        try:
+            self.receiveServer = OSC.OSCServer(self.receive_address)  # create a serve to receive OSC from the tablet
+            self.receiveServer.addDefaultHandlers()
+            print"Server Created."
+        except socket.error:
+            print "Socket Error."
+            socketError = True
+            print socketError
+
+    def stop_handler(self, addr, tags, stuff, source):
+        # Close the OSC server
+        print "\nClosing OSCServer."
+        self.receiveServer.close()
+        print "Waiting for Server-thread to finish"
+        try:
+            self.emorating_oscServer.join()  ##!!!
+            print "Done"
+        except AttributeError:
+            print "Done"
+
+    def add_handler(self):
+        try:
+            self.receiveServer.addMsgHandler("/trigger", self.trigger_handler)
+            self.receiveServer.addMsgHandler("/stop", self.stop_handler)
+        except AttributeError:
+            pass
+
+    def start(self):
+        try:
+
+            self.emorating_oscServer = threading.Thread(target=self.receiveServer.serve_forever)
+            self.emorating_oscServer.start()
+            print "\nOSCServer established."
+        except AttributeError:
+            pass
+
+    def stop(self):
+        # Close the OSC server
+        print "\nClosing OSCServer."
+        self.receiveServer.close()
+        print "Waiting for Server-thread to finish"
+        try:
+            self.emorating_oscServer.join()  ##!!!
+            print "Done"
+        except AttributeError:
+            print "Done"
 
 
 class Ptsgui(QtGui.QMainWindow):
@@ -49,7 +142,9 @@ class Ptsgui(QtGui.QMainWindow):
         self.mixer.out()
         self.fifo.out()
 
-        self.data, self.pos, self.N = np.zeros(2), np.zeros(2), 0
+        self.firstSend = True # First time sending doesn't need to clear the listner
+
+        self.data, self.pos, self.N, self.dim = np.zeros(2), np.zeros(2), 0, 0
         self.ip = HOMEIP
         self.genDim, self.genNrmin, self.genNrmax, self.genNc = 3, 50, 200,  4 # Init gen data para
 
@@ -59,86 +154,14 @@ class Ptsgui(QtGui.QMainWindow):
         self.max_sigma = 0.4 # Use to limit sigma slider based on dim
         self.exp_resolution = 1000000  # Resolution for lookup table
 
-        # TODO These parameter should become sliders
-        self.m_comp, self.dt, self.resistant, self.sigma = 0.02, 0.005, 0.999, 0.15  # init
+
+        self.m_comp, self.dt, self.r, self.sigma = 0.02, 0.005, 0.999, 0.15  # init
         self.t = 1.0  # Time in second per piece, TODO a para
         self.blockSize = 5000  # Buffer size for trajectory TODO a para
         self.audioVecSize = int(self.t * self.blockSize)  # I define that 5000 steps will return 1 second of audio
         self.windowing = DSP().makeWindow(self.audioVecSize, rampUp=0.05, rampDown=0.05)  # Windowing for audio
         self.initUI()
 
-    # Hasn't tested yet.
-    class Listening(object):
-        def __init__(self, data, ip, port=5678):
-            self.receive_address = ip, port
-            # Print other parameters here to test if I can access all the para.
-
-        def trigger_handler(self, addr, tags, stuff, source):
-            self.sortedPos = np.array([stuff[0], stuff[1]])
-            # Find nearest neighbour
-            # TODO, exclude playing sound if there is no neighbouring point < dis_thres
-            # if nearest d < dis_thres, play , else print "no neighbour"
-
-            deltas = self.data[:, 0:2] - self.sortedPos
-            dist_2 = np.einsum('ij,ij->i', deltas, deltas)
-            idx = np.argmin(dist_2)
-            vel = np.random.rand(self.dim) - 0.5  # Need to be controllable by pressure
-            self.pos = np.array(self.data[idx, :])
-
-            if (self.data):
-                trj, junk, forceSound = Trajectory.PTSM(self.pos, self.data, self.vel, self.exp_table,
-                                                        self.exp_resolution, self.norm_max, sigma=self.sigma,
-                                                        dt=self.dt, r=self.resistant,
-                                                        Nsamp=self.audioVecSize, compensation=self.m_comp)
-                velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.windowing
-                velSound = DSP().butter_lowpass_filter(velSound, 2000.0, FS, 6)  # 6th order
-                # forceSound = forceSound / np.max(np.absolute(forceSound))
-                stopevent = threading.Event()
-                producer = threading.Thread(name="Compute audio signal", target=self.proc,
-                                            args=[stopevent, velSound])
-                producer.start()
-                # Try to draw trj here. might fail though
-                # self.drawTrj(trj)
-            else:
-                self.statusBar().showMessage('Receiving trigger but no data available.')
-
-        def spawn(self):
-            print"Server Created."
-            self.receiveServer = OSC.OSCServer(
-                self.receive_address)  # create a serve to receive OSC from the tablet
-            self.receiveServer.addDefaultHandlers()
-
-        def stop_handler(self, addr, tags, stuff, source):
-            # Close the OSC server
-            print "\nClosing OSCServer."
-            self.receiveServer.close()
-            print "Waiting for Server-thread to finish"
-            try:
-                self.emorating_oscServer.join()  ##!!!
-                print "Done"
-            except AttributeError:
-                print "Done"
-
-        def add_handler(self):
-            self.receiveServer.addMsgHandler("/trigger", self.trigger_handler)
-            self.receiveServer.addMsgHandler("/stop", self.stop_handler)
-
-        def start(self):
-            print "\nStarting OSCServer."
-            self.emorating_oscServer = threading.Thread(target=self.receiveServer.serve_forever)
-            self.emorating_oscServer.start()
-            print "\nOSCServer established."
-
-        def stop(self):
-            # Close the OSC server
-            print "\nClosing OSCServer."
-            self.receiveServer.close()
-            print "Waiting for Server-thread to finish"
-            try:
-                self.emorating_oscServer.join()  ##!!!
-                print "Done"
-            except AttributeError:
-                print "Done"
 
     def proc(self, stopevent, soundOutput):
         self.fifo.put(soundOutput)
@@ -149,7 +172,7 @@ class Ptsgui(QtGui.QMainWindow):
         self.vel = np.random.rand(self.dim) - 0.5
 
         trj, junk, forceSound = Trajectory.PTSM(self.pos, self.data, self.vel, self.exp_table, self.exp_resolution, \
-                                                self.norm_max, sigma=self.sigma, dt=self.dt, r=self.resistant, \
+                                                self.norm_max, sigma=self.sigma, dt=self.dt, r=self.r, \
                                                 Nsamp=self.audioVecSize, compensation=self.m_comp)
         velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.windowing
         velSound = DSP().butter_lowpass_filter(velSound, 2000.0, FS, 6)  # 6th order
@@ -177,18 +200,39 @@ class Ptsgui(QtGui.QMainWindow):
         self.trjFigCanvas.draw()
 
     def sendData(self):
+        global  socketError
+        # If there is a listener already stop it.
+        if (self.firstSend):
+            print "listener not created yet. "
+            self.firstSend = False
+        else:
+
+            print "stopping listener."
+            self.androidListener.stop()
+            time.sleep(0.5)
+
         print "sendData called"
         self.statusBar().showMessage('Sending data, please wait ...')
+        time.sleep(0.3)
         if self.N != 0:
-            androidClient = OSCsend(self.ip, 7012)
+            androidClient = OSCsend(self.ip, SENDPORT)
             nr = 100
             sortedData = self.data[self.data[:, 0].argsort()]
             for i in range(self.N / nr):
                 androidClient.osc_msg(nr=nr, msg=sortedData[i * nr: i * nr + nr, 0:2])
-                time.sleep(1.5)
-                print "sending data."
+                time.sleep(0.5)
             androidClient.osc_msg(nr=self.N % nr, msg=sortedData[self.N - self.N % nr: self.N, 0:2])
-            self.statusBar().showMessage('Finished sending.')
+            # Start listener
+            self.androidListener = Listening(gui =  self, data=self.data, ip = SELFIP, port = LISTENPORT)
+            # self.androidListener.spawn()
+            # print socketError
+            # if (socketError):
+            #     self.statusBar().showMessage('Error, Click "Clear Listener" and try again.')
+            # else:
+            #     self.androidListener.add_handler()
+            #     self.androidListener.start()
+            #     self.statusBar().showMessage('Finished sending, created listener.')
+
         else:
             self.statusBar().showMessage('Data not generated yet, please generate data first.')
 
@@ -204,6 +248,11 @@ class Ptsgui(QtGui.QMainWindow):
         self.exp_table = Exptable().updateExpTable(self.sigma, delta_dis)
         self.dataFigAx.scatter(self.data[:, 0], self.data[:, 1], c="blue", picker=2, s=[50] *self.N)
         self.dataFigCanvas.draw()
+
+    def clearListener(self):
+        # Maybe need to try.
+        # maybe also send a clear data to android.
+        self.androidListener.stop()
 
     def initUI(self):
         self.statusBar().showMessage('Move on each item to see user tip.')  # Tell user to wait while sending data
@@ -246,10 +295,16 @@ class Ptsgui(QtGui.QMainWindow):
                                  'set of data based on the input dimension and cluster amount.')
         genDataButton.resize(genDataButton.sizeHint())
         genDataButton.clicked.connect(self.genData)
+
         sendDataButton = QtGui.QPushButton("Send Data", self)
-        sendDataButton.resize(genDataButton.sizeHint())
         sendDataButton.clicked.connect(self.sendData)
         sendDataButton.setToolTip('Send the first 2 columns of data to Android device for plotting.')
+
+        clearListenerButton = QtGui.QPushButton('Clear Listener', self)
+        clearListenerButton.setToolTip('Click to clear the osc listener.')
+        clearListenerButton.clicked.connect(self.clearListener)
+
+
         #----------------------
 
         #sigma
@@ -357,7 +412,8 @@ class Ptsgui(QtGui.QMainWindow):
         cltLeftBox.addWidget(nrmaxTitle, 2, 2), cltLeftBox.addWidget(self.nrmaxDisplay, 2, 3)
         cltLeftBox.addWidget(genDataButton, 3, 0 )
         cltLeftBox.addWidget(ipTitle, 4,0), cltLeftBox.addWidget(self.ipDisplay, 4, 1)
-        cltLeftBox.addWidget(sendDataButton, 6, 0, 6, 4)
+        cltLeftBox.addWidget(sendDataButton, 6, 0, 6, 2), cltLeftBox.addWidget(clearListenerButton, 6, 2, 6, 3)
+
 
         # Add right box
         cltRightBox = QtGui.QGridLayout()
@@ -396,19 +452,20 @@ class Ptsgui(QtGui.QMainWindow):
             smi, sma = 0, 100
             dmi, dma = 0.001, self.max_sigma
             self.sigma = linlin(value, smi, sma, dmi, dma)
-            self.sigmaDisplay.setText(str(self.sigma))
+            print self.sigma
+            self.sigmaDisplay.setText(str(format(self.sigma, '.3f')))
 
         elif self.sender() == self.dtSlider:
             smi, sma = 0, 100
             dmi, dma = 0.001, 0.01
             self.dt = linlin(value, smi, sma, dmi, dma)
-            self.dtDisplay.setText(str(self.dt))
+            self.dtDisplay.setText(str(format(self.dt, '.3f')))
 
         elif self.sender() == self.rSlider:
             smi, sma = 0, 100
             dmi, dma = 0.99, 1.0
             self.r = linlin(value, smi, sma, dmi, dma)
-            self.rDisplay.setText(str(self.r))
+            self.rDisplay.setText(str(format(self.r, '.3f')))
 
 
         elif self.sender() == self.dimDisplay:
@@ -424,6 +481,8 @@ class Ptsgui(QtGui.QMainWindow):
             print "nr max = " + str(value)
             self.genNrmax = value
         else: print "Unrecognised input source."
+
+        self.androidListener.printpara()
 
 
 
