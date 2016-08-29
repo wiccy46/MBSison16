@@ -1,26 +1,21 @@
 import Trajectory
 import numpy as np
-from io import StringIO
-import time, OSC, socket
+import time, socket
 import threading, sys
-from PyQt4 import QtGui, QtCore
 import pyo64 as pyo
 import matplotlib.pyplot as plt
-from threading import Thread
-
 from lib.Exptable import Exptable
 from lib.DSP import DSP
 from lib.DataGen import DataGen
 from lib.OSCsend import OSCsend
 from lib.Listening import Listening
+from PyQt4 import QtGui, QtCore
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
-from matplotlib.figure import Figure
 
 """
 Set up Audio server
 """
-
 FS = 44100/4
 BLOCK = 1024
 HOMEIP = '192.168.178.47'
@@ -30,16 +25,11 @@ LISTENPORT = 5678
 SENDPORT = 7012
 socketError = False
 
-
-# TODO put this in the GUI so that there is a button to stop.
 s = pyo.Server(sr=FS, nchnls=2, buffersize=BLOCK, duplex=0).boot()
 s.start()
-# Need to adjust the maxsize to test the speed.
 
 def linlin(x, smi, sma, dmi, dma): return (x-smi)/float(sma-smi)*(dma-dmi)+dmi
 def linlinInvert(x, smi, sma, dmi, dma): return (x-dmi)*(sma-smi)/(dma-dmi) + smi
-
-
 
 class Ptsgui(QtGui.QMainWindow):
 
@@ -53,9 +43,7 @@ class Ptsgui(QtGui.QMainWindow):
         self.mixer.setAmp(1, 1, 1)
         self.mixer.out()
         self.fifo.out()
-
         self.firstSend = True # First time sending doesn't need to clear the listner
-
         self.data, self.pos, self.N, self.dim = np.zeros(2), np.zeros(2), 0, 0
         self.ip = HOMEIP
         self.genDim, self.genNrmin, self.genNrmax, self.genNc = 3, 50, 200,  4 # Init gen data para
@@ -135,12 +123,12 @@ class Ptsgui(QtGui.QMainWindow):
                 time.sleep(0.5)
             androidClient.osc_msg(nr=self.N % nr, msg=sortedData[self.N - self.N % nr: self.N, 0:2])
 
-
             # Start listening
             self.androidListener = Listening(gui = self, ip = SELFIP, port = LISTENPORT)
             self.androidListener.spawn()
-            print socketError
             if (socketError):
+                print "socketError, server already exist. "
+
                 self.statusBar().showMessage('Error, Click "Clear Listener" and try again.')
             else:
                 self.androidListener.add_handler()
@@ -149,8 +137,6 @@ class Ptsgui(QtGui.QMainWindow):
 
         else:
             self.statusBar().showMessage('Data not generated yet, please generate data first.')
-
-
 
     def genData(self):
         self.dataFigAx.clear()
@@ -167,6 +153,21 @@ class Ptsgui(QtGui.QMainWindow):
         # Maybe need to try.
         # maybe also send a clear data to android.
         self.androidListener.stop()
+
+    def getfiles(self):
+        dlg = QtGui.QFileDialog()
+        dlg.setFileMode(QtGui.QFileDialog.AnyFile)
+        dlg.setFilter("Text files (*.txt *csv)") # And then it depends whether txt or csv do thing differently
+        filenames = QtCore.QStringList()
+
+        if dlg.exec_():
+            filenames = dlg.selectedFiles()
+            f = open(filenames[0], 'r')
+
+            with f:
+                temp = f.read()
+                self.contents.setText(temp) # send data to data here. but might need processing.
+
 
     def initUI(self):
         self.statusBar().showMessage('Move on each item to see user tip.')  # Tell user to wait while sending data
@@ -210,6 +211,9 @@ class Ptsgui(QtGui.QMainWindow):
         genDataButton.resize(genDataButton.sizeHint())
         genDataButton.clicked.connect(self.genData)
 
+        openFileButton = QtGui.QPushButton("Load File")
+        openFileButton.clicked.connect(self.getfiles)
+
         sendDataButton = QtGui.QPushButton("Send Data", self)
         sendDataButton.clicked.connect(self.sendData)
         sendDataButton.setToolTip('Send the first 2 columns of data to Android device for plotting.')
@@ -220,7 +224,6 @@ class Ptsgui(QtGui.QMainWindow):
 
 
         #----------------------
-
         #sigma
         sigmaTitle = QtGui.QLabel('Sigma')
         sigmaTitle.resize(sigmaTitle.sizeHint())
@@ -260,8 +263,6 @@ class Ptsgui(QtGui.QMainWindow):
         self.rDisplay.setText(str(r_init))
         self.rSlider.valueChanged[int].connect(self.changeValue)
         #----------------------#
-
-
         # left pannel.
         dimTitle = QtGui.QLabel('Dimension')
         dimTitle.setFixedSize(70, 20)
@@ -324,7 +325,7 @@ class Ptsgui(QtGui.QMainWindow):
         cltLeftBox.addWidget(dimTitle, 1, 2), cltLeftBox.addWidget(self.dimDisplay, 1, 3)
         cltLeftBox.addWidget(nrminTitle, 2, 0), cltLeftBox.addWidget(self.nrminDisplay, 2, 1)
         cltLeftBox.addWidget(nrmaxTitle, 2, 2), cltLeftBox.addWidget(self.nrmaxDisplay, 2, 3)
-        cltLeftBox.addWidget(genDataButton, 3, 0 )
+        cltLeftBox.addWidget(genDataButton, 3, 0 ), cltLeftBox.addWidget(openFileButton, 3, 2)
         cltLeftBox.addWidget(ipTitle, 4,0), cltLeftBox.addWidget(self.ipDisplay, 4, 1)
         cltLeftBox.addWidget(sendDataButton, 6, 0, 6, 2), cltLeftBox.addWidget(clearListenerButton, 6, 2, 6, 3)
 
@@ -388,20 +389,28 @@ class Ptsgui(QtGui.QMainWindow):
             print "nc = " + str(value)
             self.genNc = value
         elif self.sender() == self.nrminDisplay:
-            print "nr min = " + str(value)
-            self.genNrmin = value
+            if (value > self.genNrmax):
+                self.statusBar().showMessage('Warning, input value higher than Nr Max.')
+                self.genNrmin = self.genNrmax
+                self.nrminDisplayDisplay.setValue(self.genNrmin)
+            else:
+                print "nr min = " + str(value)
+                self.genNrmin = value
         elif self.sender() == self.nrmaxDisplay:
-            print "nr max = " + str(value)
-            self.genNrmax = value
+            if (value < self.genNrmin):
+                self.statusBar().showMessage('Warning, input value lower than Nr Min.')
+                self.genNrmax = self.genNrmin
+                self.nrminDisplayDisplay.setValue(self.genNrmax)
+            else:
+                print "nr max = " + str(value)
+                self.genNrmax = value
         else: print "Unrecognised input source."
-        self.androidListener.printpara()
 
     def closeEvent(self, event):
 		reply = QtGui.QMessageBox.question(self, 'Message',
             "Are you sure to quit?", QtGui.QMessageBox.Yes |
             QtGui.QMessageBox.No, QtGui.QMessageBox.Yes)
 		if reply == QtGui.QMessageBox.Yes:
-
 			event.accept()
 		else:
 			event.ignore()
