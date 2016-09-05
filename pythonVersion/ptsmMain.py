@@ -9,9 +9,12 @@ from lib.DSP import DSP
 from lib.DataGen import DataGen
 from lib.OSCsend import OSCsend
 from lib.Listening import Listening
+from lib.SerialRead import SerialListener
 from PyQt4 import QtGui, QtCore
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
+
+
 
 """
 Set up Audio server
@@ -31,10 +34,13 @@ s.start()
 def linlin(x, smi, sma, dmi, dma): return (x-smi)/float(sma-smi)*(dma-dmi)+dmi
 def linlinInvert(x, smi, sma, dmi, dma): return (x-dmi)*(sma-smi)/(dma-dmi) + smi
 
-class Ptsgui(QtGui.QMainWindow):
 
+
+class Ptsgui(QtGui.QMainWindow):
     def __init__(self):
         super(Ptsgui, self).__init__()
+
+        self.serialThread = SerialListener("Serial1", '/dev/cu.usbmodem1411', self.serialUpdate)
         self.fifo = pyo.FIFOPlayer(maxsize=20, mul=[.5, .5])
         self.mixer = pyo.Mixer()
         self.mixer.addInput(0, self.fifo);
@@ -61,6 +67,11 @@ class Ptsgui(QtGui.QMainWindow):
         self.audioVecSize = int(self.t * self.blockSize)  # I define that 5000 steps will return 1 second of audio
         self.windowing = DSP().makeWindow(self.audioVecSize, rampUp=0.05, rampDown=0.05)  # Windowing for audio
         self.initUI()
+
+    def serialUpdate(self, value):
+        self.sigma = value
+        print "Sigma is : " + str(self.sigma)
+
 
 
     def proc(self, stopevent, soundOutput):
@@ -148,11 +159,13 @@ class Ptsgui(QtGui.QMainWindow):
         self.exp_table = Exptable().updateExpTable(self.sigma, delta_dis)
         self.dataFigAx.scatter(self.data[:, 0], self.data[:, 1], c="blue", picker=2, s=[50] *self.N)
         self.dataFigCanvas.draw()
+        self.statusBar().showMessage('Data generated. Click on the data on the left graph to probe a particle trajectory.')
 
     def clearListener(self):
         # Maybe need to try.
         # maybe also send a clear data to android.
         self.androidListener.stop()
+        self.serialThread.stop()
 
     def getfiles(self):
         dlg = QtGui.QFileDialog()
@@ -172,7 +185,7 @@ class Ptsgui(QtGui.QMainWindow):
     def initUI(self):
         self.statusBar().showMessage('Move on each item to see user tip.')  # Tell user to wait while sending data
         self.setGeometry(50, 50, 1050, 650)
-        self.setWindowTitle('PTS')
+        self.setWindowTitle('Particle Trajectory Sonification')
 
         mainlayout = QtGui.QVBoxLayout()
         self.widget = QtGui.QWidget()
@@ -235,6 +248,7 @@ class Ptsgui(QtGui.QMainWindow):
         self.sigmaSlider.valueChanged[int].connect(self.changeValue)
         self.sigmaDisplay = QtGui.QLineEdit()
         self.sigmaDisplay.setFixedSize(50, 20)
+        self.sigmaDisplay.setText('0.197') # Using hard input is not clever.
 
         #dt
         dt_init = 0.005
@@ -355,6 +369,13 @@ class Ptsgui(QtGui.QMainWindow):
 
         mainlayout.addLayout(plotBox)
         mainlayout.addLayout(cltBox)
+
+        # Run serial listener here.
+
+
+        self.serialThread.start()
+
+
         self.show()
 
     def ipChangeValue(self):
@@ -419,6 +440,7 @@ def main():
 	app = QtGui.QApplication(sys.argv)
 	ptsgui = Ptsgui()
 	sys.exit(app.exec_())
+
 
 if __name__ == '__main__':
 	main()
