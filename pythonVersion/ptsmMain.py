@@ -14,33 +14,41 @@ from PyQt4 import QtGui, QtCore
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
 
+# Todo : 2. Decouple Send Data and listener. Dedicated listening button.
+# TODO : 3. Target IP box needs to be Enter to update.
+# TODO : 4. Closing the app needs to kill the thread as well.
+# TODo: 1. the serial port name is different some time. Because I have other usb device connected before.
+
+FS = 44100/4
+BLOCK = 1024
+HOMEIP = '192.168.178.47'
+SELFIP = socket.gethostbyname(socket.getfqdn())
+OFFICEIP = "129.70.149.78"
+LISTENPORT = 5678
+SENDPORT = 7012
+socketError = False
 
 
 """
 Set up Audio server
 """
-FS = 44100/4
-BLOCK = 1024
-HOMEIP = '192.168.178.47'
-SELFIP = socket.gethostbyname(socket.getfqdn())
-OFFICEIP = "129.70.149.23"
-LISTENPORT = 5678
-SENDPORT = 7012
-socketError = False
-
 s = pyo.Server(sr=FS, nchnls=2, buffersize=BLOCK, duplex=0).boot()
 s.start()
+
 
 def linlin(x, smi, sma, dmi, dma): return (x-smi)/float(sma-smi)*(dma-dmi)+dmi
 def linlinInvert(x, smi, sma, dmi, dma): return (x-dmi)*(sma-smi)/(dma-dmi) + smi
 
-
-
 class Ptsgui(QtGui.QMainWindow):
     def __init__(self):
         super(Ptsgui, self).__init__()
+        self.serialConnection = False
+        try:
+            self.serialThread = SerialListener("Serial1", '/dev/cu.usbmodem1421', self.serialUpdate)
+            self.serialConnection = True
 
-        self.serialThread = SerialListener("Serial1", '/dev/cu.usbmodem1411', self.serialUpdate)
+        except OSError:
+            print "Serial Port Error, not connected."
         self.fifo = pyo.FIFOPlayer(maxsize=20, mul=[.5, .5])
         self.mixer = pyo.Mixer()
         self.mixer.addInput(0, self.fifo);
@@ -51,7 +59,7 @@ class Ptsgui(QtGui.QMainWindow):
         self.fifo.out()
         self.firstSend = True # First time sending doesn't need to clear the listner
         self.data, self.pos, self.N, self.dim = np.zeros(2), np.zeros(2), 0, 0
-        self.ip = HOMEIP
+        self.ip = OFFICEIP
         self.genDim, self.genNrmin, self.genNrmax, self.genNc = 3, 50, 200,  4 # Init gen data para
 
         self.vel , self.t = 0, 1.
@@ -66,13 +74,18 @@ class Ptsgui(QtGui.QMainWindow):
         self.blockSize = 5000  # Buffer size for trajectory TODO a para
         self.audioVecSize = int(self.t * self.blockSize)  # I define that 5000 steps will return 1 second of audio
         self.windowing = DSP().makeWindow(self.audioVecSize, rampUp=0.05, rampDown=0.05)  # Windowing for audio
+
+        self.sigmaSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
         self.initUI()
 
+    def androidUpdateSlider(self, value):
+        self.dtSlider.setValue(int(value[0]))
+        self.rSlider.setValue(int(value[1]))
+
+
     def serialUpdate(self, value):
-        self.sigma = value
-        print "Sigma is : " + str(self.sigma)
-
-
+        temp =  linlin(value, 550, 590, 0, 100) # 540 is fulls queezed, 590 is relax state
+        self.sigmaSlider.setValue(temp)
 
     def proc(self, stopevent, soundOutput):
         self.fifo.put(soundOutput)
@@ -135,7 +148,7 @@ class Ptsgui(QtGui.QMainWindow):
             androidClient.osc_msg(nr=self.N % nr, msg=sortedData[self.N - self.N % nr: self.N, 0:2])
 
             # Start listening
-            self.androidListener = Listening(gui = self, ip = SELFIP, port = LISTENPORT)
+            self.androidListener = Listening(gui = self, ip = SELFIP, callback=self.androidUpdateSlider, port = LISTENPORT)
             self.androidListener.spawn()
             if (socketError):
                 print "socketError, server already exist. "
@@ -157,7 +170,10 @@ class Ptsgui(QtGui.QMainWindow):
         self.max_sigma = np.log(self.dim) / 2.5 * 0.5 + 0.1
         delta_dis = np.linspace(0.0, self.dim, num=self.exp_resolution)  # Range of distance difference.
         self.exp_table = Exptable().updateExpTable(self.sigma, delta_dis)
+
         self.dataFigAx.scatter(self.data[:, 0], self.data[:, 1], c="blue", picker=2, s=[50] *self.N)
+        self.dataFigAx.set_xlim([-0.5, 0.5])
+        self.dataFigAx.set_ylim([-0.5, 0.5])
         self.dataFigCanvas.draw()
         self.statusBar().showMessage('Data generated. Click on the data on the left graph to probe a particle trajectory.')
 
@@ -240,12 +256,13 @@ class Ptsgui(QtGui.QMainWindow):
         #sigma
         sigmaTitle = QtGui.QLabel('Sigma')
         sigmaTitle.resize(sigmaTitle.sizeHint())
-        self.sigmaSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
+
         self.sigmaSlider.setToolTip('Large sigma results in 1 global minimum while small sigma results in local minimum '
                                'in each data point')
         self.sigmaSlider.setRange(0, 100)
         self.sigmaSlider.setValue(50)
         self.sigmaSlider.valueChanged[int].connect(self.changeValue)
+        # self.sigmaSlider.valueChanged[int].connect(self.serialUpdate)
         self.sigmaDisplay = QtGui.QLineEdit()
         self.sigmaDisplay.setFixedSize(50, 20)
         self.sigmaDisplay.setText('0.197') # Using hard input is not clever.
@@ -288,7 +305,6 @@ class Ptsgui(QtGui.QMainWindow):
         self.dimDisplay.resize(self.dimDisplay.sizeHint())
         self.dimDisplay.setToolTip('Choose the dimensionality of the data. Type = int, Min = 2, Max = 1000')
         self.dimDisplay.valueChanged[int].connect(self.changeValue)
-        # self.rSlider.valueChanged[int].connect(self.changeValue)
 
         ncTitle = QtGui.QLabel('Clusters')
         ncTitle.setFixedSize(70, 20)
@@ -327,7 +343,7 @@ class Ptsgui(QtGui.QMainWindow):
         ipTitle.setFixedSize(80, 20)
         # ipTitle.resize(dimTitle.sizeHint())
         self.ipDisplay = QtGui.QLineEdit()
-        self.ipDisplay.setText(HOMEIP)
+        self.ipDisplay.setText(self.ip)
         # self.ipDisplay.resize(self.dimDisplay.sizeHint())
         self.ipDisplay.setFixedSize(106, 20)
         self.ipDisplay.returnPressed.connect(self.ipChangeValue)
@@ -371,16 +387,13 @@ class Ptsgui(QtGui.QMainWindow):
         mainlayout.addLayout(cltBox)
 
         # Run serial listener here.
-
-
-        self.serialThread.start()
-
-
+        if (self.serialConnection == True):
+            self.serialThread.start()
         self.show()
 
     def ipChangeValue(self):
-        print self.ipDisplay.text()
         self.ip = self.ipDisplay.text()
+        self.statusBar().showMessage('Android IP: ' + self.ip)
 
 
     def changeValue(self,value):

@@ -1,14 +1,15 @@
 import numpy as np
 from lib.DSP import DSP
 import threading, OSC, socket
-
+import Trajectory
 FS = 44100/4
 
 # Hasn't tested yet.
 class Listening(object):
-    def __init__(self, gui,  ip , port=5678):
+    def __init__(self, gui,  ip , callback, port=5678):
         self.gui = gui
         self.receive_address = ip, port
+        self.callback = callback
 
     def printpara(self):
         print self.gui.sigma
@@ -42,6 +43,10 @@ class Listening(object):
         # Try to draw trj here. might fail though
         self.gui.drawTrj(trj)
 
+    def slider_handler(self, addr, tags, stuff, source):
+        self.callback(np.array([stuff[0], stuff[1]]))
+
+
 
     def spawn(self):
         global  socketError
@@ -69,12 +74,12 @@ class Listening(object):
         try:
             self.receiveServer.addMsgHandler("/trigger", self.trigger_handler)
             self.receiveServer.addMsgHandler("/stop", self.stop_handler)
+            self.receiveServer.addMsgHandler("/sliders", self.slider_handler)
         except AttributeError:
             pass
 
     def start(self):
         try:
-
             self.emorating_oscServer = threading.Thread(target=self.receiveServer.serve_forever)
             self.emorating_oscServer.start()
             print "\nOSCServer established."
