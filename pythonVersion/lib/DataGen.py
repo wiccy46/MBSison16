@@ -2,7 +2,6 @@ import random as pyrandom
 import numpy as np
 
 class DataGen():
-
     def stddata(self, data, dim):
         for i in range(dim):
             # S1 Standardize data.

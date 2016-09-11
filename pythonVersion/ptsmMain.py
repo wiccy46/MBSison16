@@ -14,10 +14,13 @@ from PyQt4 import QtGui, QtCore
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
 
+"""
 # Todo : 2. Decouple Send Data and listener. Dedicated listening button.
 # TODO : 3. Target IP box needs to be Enter to update.
 # TODO : 4. Closing the app needs to kill the thread as well.
 # TODo: 1. the serial port name is different some time. Because I have other usb device connected before.
+# TODO: 5. The potential plot only reflects the potentials of the 2 columns rather than the whole data set
+"""
 
 FS = 44100/4
 BLOCK = 1024
@@ -198,6 +201,14 @@ class Ptsgui(QtGui.QMainWindow):
                 self.contents.setText(temp) # send data to data here. but might need processing.
 
 
+    def printDataInfo(self):
+        if(self.data):
+            self.statusBar().showMessage("Data: Row: " + str(self.N) + " , Dim: " + str(self.dim) + " , Clusters: "
+                                         + str(self.genNc) + ".")
+        else:
+            self.statusBar().showMessage("No Data!")
+
+
     def initUI(self):
         self.statusBar().showMessage('Move on each item to see user tip.')  # Tell user to wait while sending data
         self.setGeometry(50, 50, 1050, 650)
@@ -242,6 +253,10 @@ class Ptsgui(QtGui.QMainWindow):
 
         openFileButton = QtGui.QPushButton("Load File")
         openFileButton.clicked.connect(self.getfiles)
+
+        printInfoButton = QtGui.QPushButton("Info")
+        printInfoButton.setToolTip('Display data information.')
+        printInfoButton.clicked.connect(self.printDataInfo)
 
         sendDataButton = QtGui.QPushButton("Send Data", self)
         sendDataButton.clicked.connect(self.sendData)
@@ -355,7 +370,7 @@ class Ptsgui(QtGui.QMainWindow):
         cltLeftBox.addWidget(dimTitle, 1, 2), cltLeftBox.addWidget(self.dimDisplay, 1, 3)
         cltLeftBox.addWidget(nrminTitle, 2, 0), cltLeftBox.addWidget(self.nrminDisplay, 2, 1)
         cltLeftBox.addWidget(nrmaxTitle, 2, 2), cltLeftBox.addWidget(self.nrmaxDisplay, 2, 3)
-        cltLeftBox.addWidget(genDataButton, 3, 0 ), cltLeftBox.addWidget(openFileButton, 3, 2)
+        cltLeftBox.addWidget(genDataButton, 3, 0 ), cltLeftBox.addWidget(openFileButton, 3, 2) , cltLeftBox.addWidget(printInfoButton, 3, 3)
         cltLeftBox.addWidget(ipTitle, 4,0), cltLeftBox.addWidget(self.ipDisplay, 4, 1)
         cltLeftBox.addWidget(sendDataButton, 6, 0, 6, 2), cltLeftBox.addWidget(clearListenerButton, 6, 2, 6, 3)
 
