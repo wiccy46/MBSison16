@@ -6,12 +6,15 @@ FS = 44100/4
 
 # TODO, velSoundCallback is not checked yet.
 
+def linlin(x, smi, sma, dmi, dma): return (x-smi)/float(sma-smi)*(dma-dmi)+dmi
+
 class Listening(object):
     def __init__(self, gui,  ip , sliderCallback, sigmaSliderCallback, velSoundCallback, port=5678):
         self.gui = gui
         self.receive_address = ip, port
         self.sliderCallback = sliderCallback
         self.sigmaSliderCallback = sigmaSliderCallback
+        self.pressure = 0.0
 
     def printpara(self):
         print self.gui.sigma
@@ -27,7 +30,10 @@ class Listening(object):
         deltas = self.gui.data[:, 0:2] - self.sortedPos
         dist_2 = np.einsum('ij,ij->i', deltas, deltas)
         idx = np.argmin(dist_2)
-        vel = np.random.rand(self.gui.dim) - 0.5  # Need to be controllable by pressure
+        angVec = np.random.rand(self.gui.dim) - 0.5
+        vel = angVec/ np.linalg.norm(angVec) / 2 * self.pressure
+
+        # vel = np.random.rand(self.gui.dim) - 0.5  # Need to be controllable by pressure
         pos = np.array(self.gui.data[idx, :])
         #
 
@@ -52,6 +58,12 @@ class Listening(object):
 
     def sigmaSlider_handler(self, addr, tags, stuff, source):
         self.sigmaSliderCallback(stuff[0])
+
+    def pressure_handler(self, addr, tags, stuff, source):
+        temp = float(stuff[0])
+        self.pressure = linlin(temp, 0.3, 0.8, 0. , 1.0)
+        # Pressure ranged between 0.3 ~ 0.8
+        print "Pressure is " + str(self.pressure)
 
     def spawn(self):
         global  socketError
@@ -81,6 +93,7 @@ class Listening(object):
             self.receiveServer.addMsgHandler("/stop", self.stop_handler)
             self.receiveServer.addMsgHandler("/sliders", self.slider_handler)
             self.receiveServer.addMsgHandler("/sigmaSlider", self.sigmaSlider_handler)
+            self.receiveServer.addMsgHandler("/pressure", self.pressure_handler)
         except AttributeError:
             pass
 
