@@ -9,11 +9,13 @@ FS = 44100/4
 def linlin(x, smi, sma, dmi, dma): return (x-smi)/float(sma-smi)*(dma-dmi)+dmi
 
 class Listening(object):
-    def __init__(self, gui,  ip , sliderCallback, sigmaSliderCallback, velSoundCallback, port=5678):
+    def __init__(self, gui,  ip , sliderCallback, sigmaSliderCallback, dtSliderCallback,
+                 velSoundCallback, port=5678):
         self.gui = gui
         self.receive_address = ip, port
         self.sliderCallback = sliderCallback
         self.sigmaSliderCallback = sigmaSliderCallback
+        self.dtSliderCallback = dtSliderCallback
         self.pressure = 0.0
 
     def printpara(self):
@@ -62,8 +64,12 @@ class Listening(object):
     def pressure_handler(self, addr, tags, stuff, source):
         temp = float(stuff[0])
         self.pressure = linlin(temp, 0.3, 0.8, 0. , 1.0)
+        dt = linlin(temp, 0.3, 0.8, 0, 100)
         # Pressure ranged between 0.3 ~ 0.8
         print "Pressure is " + str(self.pressure)
+        self.dtSliderCallback(dt)
+
+
 
     def spawn(self):
         global  socketError

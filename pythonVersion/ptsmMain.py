@@ -99,6 +99,9 @@ class Ptsgui(QtGui.QMainWindow):
         print type(value)
         # self.velSound = value[0]
 
+    def androidUpdateDt(self, value):
+        self.dtSlider.setValue(int(value))
+
 
 
     def serialUpdate(self, value):
@@ -179,7 +182,8 @@ class Ptsgui(QtGui.QMainWindow):
                 time.sleep(0.5)
             androidClient.osc_msg(nr=self.N % nr, msg=sortedData[self.N - self.N % nr: self.N, 0:2])
             # Start listening
-            self.androidListener = Listening(gui = self, ip = SELFIP, sliderCallback=self.androidUpdateSlider, sigmaSliderCallback=self.androidUpdateSigma,
+            self.androidListener = Listening(gui = self, ip = SELFIP, sliderCallback=self.androidUpdateSlider,
+                                             sigmaSliderCallback=self.androidUpdateSigma, dtSliderCallback= self.androidUpdateDt,
                                              velSoundCallback= self.androidUpdateVelSound, port = LISTENPORT)
             self.androidListener.spawn()
             if (socketError):
