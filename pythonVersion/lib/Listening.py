@@ -4,12 +4,14 @@ import threading, OSC, socket
 import Trajectory
 FS = 44100/4
 
-# Hasn't tested yet.
+# TODO, velSoundCallback is not checked yet.
+
 class Listening(object):
-    def __init__(self, gui,  ip , callback, port=5678):
+    def __init__(self, gui,  ip , sliderCallback, sigmaSliderCallback, velSoundCallback, port=5678):
         self.gui = gui
         self.receive_address = ip, port
-        self.callback = callback
+        self.sliderCallback = sliderCallback
+        self.sigmaSliderCallback = sigmaSliderCallback
 
     def printpara(self):
         print self.gui.sigma
@@ -33,20 +35,23 @@ class Listening(object):
                                                 self.gui.exp_resolution, self.gui.norm_max, sigma=self.gui.sigma,
                                                 dt=self.gui.dt, r=self.gui.r,
                                                 Nsamp=self.gui.audioVecSize, compensation=self.gui.m_comp)
-        velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.gui.windowing
-        velSound = DSP().butter_lowpass_filter(velSound, 2000.0, FS, 6)  # 6th order
+        self.gui.velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.gui.windowing
+        self.gui.velSound = DSP().butter_lowpass_filter(self.gui.velSound, 2000.0, FS, 6)  # 6th order
         # forceSound = forceSound / np.max(np.absolute(forceSound))
         stopevent = threading.Event()
         producer = threading.Thread(name="Compute audio signal", target=self.gui.proc,
-                                    args=[stopevent, velSound])
+                                    args=[stopevent])
         producer.start()
         # Try to draw trj here. might fail though
         self.gui.drawTrj(trj)
 
+
     def slider_handler(self, addr, tags, stuff, source):
-        self.callback(np.array([stuff[0], stuff[1]]))
+        self.sliderCallback(np.array([stuff[0], stuff[1]]))
 
 
+    def sigmaSlider_handler(self, addr, tags, stuff, source):
+        self.sigmaSliderCallback(stuff[0])
 
     def spawn(self):
         global  socketError
@@ -75,6 +80,7 @@ class Listening(object):
             self.receiveServer.addMsgHandler("/trigger", self.trigger_handler)
             self.receiveServer.addMsgHandler("/stop", self.stop_handler)
             self.receiveServer.addMsgHandler("/sliders", self.slider_handler)
+            self.receiveServer.addMsgHandler("/sigmaSlider", self.sigmaSlider_handler)
         except AttributeError:
             pass
 

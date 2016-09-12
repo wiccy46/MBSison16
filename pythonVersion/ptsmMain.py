@@ -16,10 +16,12 @@ from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as Navigatio
 
 """
 # Todo : 2. Decouple Send Data and listener. Dedicated listening button.
-# TODO : 3. Target IP box needs to be Enter to update.
 # TODO : 4. Closing the app needs to kill the thread as well.
 # TODo: 1. the serial port name is different some time. Because I have other usb device connected before.
 # TODO: 5. The potential plot only reflects the potentials of the 2 columns rather than the whole data set
+# Todo: 6  add a plot for displaying data spectrogram.
+# Todo: 3: Implement pressure mapping.
+# Todo: 7: Record sound button .
 """
 
 FS = 44100/4
@@ -64,6 +66,8 @@ class Ptsgui(QtGui.QMainWindow):
         self.data, self.pos, self.N, self.dim = np.zeros(2), np.zeros(2), 0, 0
         self.ip = OFFICEIP
         self.genDim, self.genNrmin, self.genNrmax, self.genNc = 3, 50, 200,  4 # Init gen data para
+        self.showPotential = True
+
 
         self.vel , self.t = 0, 1.
         self.exp_table = np.zeros(1) # Initialise the exp table
@@ -77,6 +81,7 @@ class Ptsgui(QtGui.QMainWindow):
         self.blockSize = 5000  # Buffer size for trajectory TODO a para
         self.audioVecSize = int(self.t * self.blockSize)  # I define that 5000 steps will return 1 second of audio
         self.windowing = DSP().makeWindow(self.audioVecSize, rampUp=0.05, rampDown=0.05)  # Windowing for audio
+        self.velSound = np.zeros(1)
 
         self.sigmaSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
         self.initUI()
@@ -86,49 +91,73 @@ class Ptsgui(QtGui.QMainWindow):
         self.rSlider.setValue(int(value[1]))
 
 
+    def androidUpdateSigma(self,value):
+        self.sigmaSlider.setValue(int(value))
+
+    def androidUpdateVelSound(self, value):
+        print "Velsound callbacked"
+        print type(value)
+        # self.velSound = value[0]
+
+
+
     def serialUpdate(self, value):
         temp =  linlin(value, 550, 590, 0, 100) # 540 is fulls queezed, 590 is relax state
         self.sigmaSlider.setValue(temp)
 
-    def proc(self, stopevent, soundOutput):
+    # TODO, test whether the listern will also update the self.velSound
+    def proc(self, stopevent):
+        self.fifo.put(self.velSound)
+
+    def recordSound(self, soundOutput):
+        s.recstart(filename="rec1")
         self.fifo.put(soundOutput)
+        time.sleep(self.t + 0.1)
+        s.recstop()
+
 
     def datafigon_pick(self, event):
         ind = np.array(event.ind)  # Get the index of the clicked data
         self.pos = np.array(self.data[ind[0], :])
         self.vel = np.random.rand(self.dim) - 0.5
-
         trj, junk, forceSound = Trajectory.PTSM(self.pos, self.data, self.vel, self.exp_table, self.exp_resolution, \
                                                 self.norm_max, sigma=self.sigma, dt=self.dt, r=self.r, \
                                                 Nsamp=self.audioVecSize, compensation=self.m_comp)
-        velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.windowing
-        velSound = DSP().butter_lowpass_filter(velSound, 2000.0, FS, 6)  # 6th order
+        self.velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.windowing
+        self.velSound = DSP().butter_lowpass_filter(self.velSound, 2000.0, FS, 6)  # 6th order
         # forceSound = forceSound / np.max(np.absolute(forceSound))
         stopevent = threading.Event()
-        producer = threading.Thread(name="Compute audio signal", target=self.proc, args=[stopevent, velSound])
+        producer = threading.Thread(name="Compute audio signal", target=self.proc, args=[stopevent])
         producer.start()
         self.drawTrj(trj)
 
     def drawTrj(self, trj): # Plot trajectory
         self.trjFigAx.clear()
         potmap = np.zeros((40, 40))
-        for i in range(40):
-            for j in range(40):
-                x = float(i) / 40 - 0.5
-                y = float(j) / 40 - 0.5
-                potmap[j, i] = Trajectory.potential_ds(self.data[:, 0:2], np.array([x, y]), self.sigma)
-        self.trjFigAx.matshow(potmap, cmap=plt.cm.gray ,  extent=(-0.5, 0.5, 0.5, -0.5))
+        if self.showPotential:
+            for i in range(40):
+                for j in range(40):
+                    x = float(i) / 40 - 0.5
+                    y = float(j) / 40 - 0.5
+                    potmap[j, i] = Trajectory.potential_ds(self.data[:, 0:2], np.array([x, y]), self.sigma)
+            self.trjFigAx.matshow(potmap, cmap=plt.cm.gray ,  extent=(-0.5, 0.5, 0.5, -0.5))
+
         self.trjFigAx.plot(self.data[:, 0], self.data[:, 1], ".")
         self.trjFigAx.plot(trj[:, 1], trj[:, 2], "-", lw=0.7, c="green")
         self.trjFigAx.plot(trj[0, 1], trj[0, 2], "o", c="yellow")
         self.trjFigAx.plot(trj[self.audioVecSize - 1, 1], trj[self.audioVecSize - 1, 2], "x", c="red")
         self.trjFigAx.set_xlim([-0.5, 0.5])
         self.trjFigAx.set_ylim([-0.5, 0.5])
+
+        self.specFigAx.specgram(self.velSound, NFFT = 1024, Fs = FS, noverlap = 900, cmap= plt.cm.gist_heat)
+
+
         self.trjFigCanvas.draw()
 
     def sendData(self):
         global  socketError
-        # If there is a listener already stop it.
+        # If there is a listener already stop it.]
+        print "Send data button clicked."
         if (self.firstSend):
             print "listener not created yet. "
             self.firstSend = False
@@ -149,9 +178,9 @@ class Ptsgui(QtGui.QMainWindow):
                 androidClient.osc_msg(nr=nr, msg=sortedData[i * nr: i * nr + nr, 0:2])
                 time.sleep(0.5)
             androidClient.osc_msg(nr=self.N % nr, msg=sortedData[self.N - self.N % nr: self.N, 0:2])
-
             # Start listening
-            self.androidListener = Listening(gui = self, ip = SELFIP, callback=self.androidUpdateSlider, port = LISTENPORT)
+            self.androidListener = Listening(gui = self, ip = SELFIP, sliderCallback=self.androidUpdateSlider, sigmaSliderCallback=self.androidUpdateSigma,
+                                             velSoundCallback= self.androidUpdateVelSound, port = LISTENPORT)
             self.androidListener.spawn()
             if (socketError):
                 print "socketError, server already exist. "
@@ -173,7 +202,6 @@ class Ptsgui(QtGui.QMainWindow):
         self.max_sigma = np.log(self.dim) / 2.5 * 0.5 + 0.1
         delta_dis = np.linspace(0.0, self.dim, num=self.exp_resolution)  # Range of distance difference.
         self.exp_table = Exptable().updateExpTable(self.sigma, delta_dis)
-
         self.dataFigAx.scatter(self.data[:, 0], self.data[:, 1], c="blue", picker=2, s=[50] *self.N)
         self.dataFigAx.set_xlim([-0.5, 0.5])
         self.dataFigAx.set_ylim([-0.5, 0.5])
@@ -208,6 +236,15 @@ class Ptsgui(QtGui.QMainWindow):
         else:
             self.statusBar().showMessage("No Data!")
 
+    def toggleButtons(self, pressed):
+        source = self.sender()  # could be shared with other similar toggleButton
+        if pressed: temp = True
+        else: temp = False
+        if source.text() == "Show Potential":
+            self.showPotential = temp
+        else: pass
+
+
 
     def initUI(self):
         self.statusBar().showMessage('Move on each item to see user tip.')  # Tell user to wait while sending data
@@ -226,7 +263,9 @@ class Ptsgui(QtGui.QMainWindow):
         self.dataFigAx = self.dataFig.add_subplot(111)
         self.dataFigAx.set_xlim([-0.5, 0.5])
         self.dataFigAx.set_ylim([-0.5, 0.5])
+        # self.dataFigAx.set_title("Pick a data to as a particle")
         self.dataFigToolbar = NavigationToolbar(self.dataFigCanvas,self)
+
         plotBoxL = QtGui.QVBoxLayout()
         plotBoxL.setSpacing(5)
         plotBoxL.addWidget(self.dataFigCanvas)
@@ -234,10 +273,18 @@ class Ptsgui(QtGui.QMainWindow):
 
         self.trjFig = plt.figure()
         self.trjFigCanvas = FigureCanvas(self.trjFig)
-        self.trjFigAx = self.trjFig.add_subplot(111)
+        self.trjFigAx = self.trjFig.add_subplot(121)
         self.trjFigAx.set_xlim([-0.5, 0.5])
         self.trjFigAx.set_ylim([-0.5, 0.5])
+        self.trjFigAx.set_title('Trajectory')
+
+        self.specFigAx = self.trjFig.add_subplot(122)
+        self.specFigAx.set_title('Spectrogram')
+
         self.trjFigToolbar = NavigationToolbar(self.trjFigCanvas,self)
+
+
+
         plotBoxR = QtGui.QVBoxLayout()
         plotBoxR.setSpacing(5)
         plotBoxR.addWidget(self.trjFigCanvas)
@@ -265,6 +312,15 @@ class Ptsgui(QtGui.QMainWindow):
         clearListenerButton = QtGui.QPushButton('Clear Listener', self)
         clearListenerButton.setToolTip('Click to clear the osc listener.')
         clearListenerButton.clicked.connect(self.clearListener)
+
+        recButton = QtGui.QPushButton("Record", self)
+        recButton.setToolTip('Record the last particle trajectory sound, require a particle.')
+        recButton.clicked.connect(self.recordSound)
+
+        self.showPotentialButton = QtGui.QPushButton("Show Potential", self)
+        self.showPotentialButton.setCheckable(True)
+        self.showPotentialButton.clicked[bool].connect(self.toggleButtons)
+
 
 
         #----------------------
@@ -370,9 +426,10 @@ class Ptsgui(QtGui.QMainWindow):
         cltLeftBox.addWidget(dimTitle, 1, 2), cltLeftBox.addWidget(self.dimDisplay, 1, 3)
         cltLeftBox.addWidget(nrminTitle, 2, 0), cltLeftBox.addWidget(self.nrminDisplay, 2, 1)
         cltLeftBox.addWidget(nrmaxTitle, 2, 2), cltLeftBox.addWidget(self.nrmaxDisplay, 2, 3)
-        cltLeftBox.addWidget(genDataButton, 3, 0 ), cltLeftBox.addWidget(openFileButton, 3, 2) , cltLeftBox.addWidget(printInfoButton, 3, 3)
+        cltLeftBox.addWidget(genDataButton, 3, 0 ), cltLeftBox.addWidget(openFileButton, 3, 1) , \
+            cltLeftBox.addWidget(printInfoButton, 3, 2), cltLeftBox.addWidget(self.showPotentialButton, 3, 3)
         cltLeftBox.addWidget(ipTitle, 4,0), cltLeftBox.addWidget(self.ipDisplay, 4, 1)
-        cltLeftBox.addWidget(sendDataButton, 6, 0, 6, 2), cltLeftBox.addWidget(clearListenerButton, 6, 2, 6, 3)
+        cltLeftBox.addWidget(sendDataButton, 5, 0, 5, 2), cltLeftBox.addWidget(clearListenerButton, 5, 2), cltLeftBox.addWidget(recButton, 5, 3)
 
 
         # Add right box
@@ -390,16 +447,16 @@ class Ptsgui(QtGui.QMainWindow):
 
         # Sub layout 1
         plotBox = QtGui.QHBoxLayout()
-        plotBox.addLayout(plotBoxL)
-        plotBox.addLayout(plotBoxR)
+        plotBox.addLayout(plotBoxL, 3)
+        plotBox.addLayout(plotBoxR, 4)
 
         cltBox = QtGui.QHBoxLayout()
 
         cltBox.addLayout(cltLeftBox)
         cltBox.addLayout(cltRightBox)
 
-        mainlayout.addLayout(plotBox)
-        mainlayout.addLayout(cltBox)
+        mainlayout.addLayout(plotBox, 8)
+        mainlayout.addLayout(cltBox, 2)
 
         # Run serial listener here.
         if (self.serialConnection == True):
