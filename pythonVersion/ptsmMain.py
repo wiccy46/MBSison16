@@ -19,8 +19,6 @@ from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as Navigatio
 # TODO : 4. Closing the app needs to kill the thread as well.
 # TODo: 1. the serial port name is different some time. Because I have other usb device connected before.
 # TODO: 5. The potential plot only reflects the potentials of the 2 columns rather than the whole data set
-# Todo: 6  add a plot for displaying data spectrogram.
-# Todo: 3: Implement pressure mapping.
 # Todo: 7: Record sound button .
 """
 

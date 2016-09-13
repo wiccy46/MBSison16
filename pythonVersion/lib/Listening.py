@@ -1,12 +1,25 @@
 import numpy as np
 from lib.DSP import DSP
-import threading, OSC, socket
+import threading, OSC, socket, math
 import Trajectory
 FS = 44100/4
 
 # TODO, velSoundCallback is not checked yet.
 
 def linlin(x, smi, sma, dmi, dma): return (x-smi)/float(sma-smi)*(dma-dmi)+dmi
+
+def por2ecu (angVec, dim, amp):
+	ecuVec = np.ones(dim)
+	for i in range(dim):
+		if (i == 0):
+			for j in range(dim - 1):
+				ecuVec[i] =  ecuVec[i] * np.cos(angVec[i])
+			ecuVec[i] = ecuVec[i] * amp
+		else:
+			for j in range( i, dim - 1):
+				ecuVec[i] = ecuVec[i] * np.cos(angVec[i])
+			ecuVec[i] = ecuVec[i] * amp * np.sin(angVec[i - 1])
+	return ecuVec
 
 class Listening(object):
     def __init__(self, gui,  ip , sliderCallback, sigmaSliderCallback, dtSliderCallback,
@@ -16,7 +29,7 @@ class Listening(object):
         self.sliderCallback = sliderCallback
         self.sigmaSliderCallback = sigmaSliderCallback
         self.dtSliderCallback = dtSliderCallback
-        self.pressure = 0.0
+        self.pressure = 0.001
 
     def printpara(self):
         print self.gui.sigma
@@ -32,14 +45,14 @@ class Listening(object):
         deltas = self.gui.data[:, 0:2] - self.sortedPos
         dist_2 = np.einsum('ij,ij->i', deltas, deltas)
         idx = np.argmin(dist_2)
-        angVec = np.random.rand(self.gui.dim) - 0.5
-        vel = angVec/ np.linalg.norm(angVec) / 2 * self.pressure
+
+        angVec  = np.random.rand(self.gui.dim - 1) * 2 * math.pi
+        velVec = por2ecu(angVec, self.gui.dim, self.pressure)     # Initial velocity
 
         # vel = np.random.rand(self.gui.dim) - 0.5  # Need to be controllable by pressure
         pos = np.array(self.gui.data[idx, :])
-        #
 
-        trj, junk, forceSound = Trajectory.PTSM(pos, self.gui.data, vel, self.gui.exp_table,
+        trj, junk, forceSound = Trajectory.PTSM(pos, self.gui.data, velVec, self.gui.exp_table,
                                                 self.gui.exp_resolution, self.gui.norm_max, sigma=self.gui.sigma,
                                                 dt=self.gui.dt, r=self.gui.r,
                                                 Nsamp=self.gui.audioVecSize, compensation=self.gui.m_comp)
@@ -68,7 +81,6 @@ class Listening(object):
         # Pressure ranged between 0.3 ~ 0.8
         print "Pressure is " + str(self.pressure)
         self.dtSliderCallback(dt)
-
 
 
     def spawn(self):
