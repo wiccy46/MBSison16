@@ -22,7 +22,7 @@ def por2ecu (angVec, dim, amp):
 	return ecuVec
 
 class Listening(object):
-    def __init__(self, gui,  ip , sliderCallback, sigmaSliderCallback, dtSliderCallback,
+    def __init__(self, gui,  ip , sliderCallback, sigmaSliderCallback, rSliderCallback,
                  velSoundCallback, port=5678):
         self.gui = gui
         self.receive_address = ip, port
@@ -77,10 +77,10 @@ class Listening(object):
     def pressure_handler(self, addr, tags, stuff, source):
         temp = float(stuff[0])
         self.pressure = linlin(temp, 0.3, 0.8, 0. , 1.0)
-        dt = linlin(temp, 0.3, 0.8, 0, 100)
+        r = linlin(temp, 0.3, 0.8, 0, 100)
         # Pressure ranged between 0.3 ~ 0.8
         print "Pressure is " + str(self.pressure)
-        self.dtSliderCallback(dt)
+        self.rSliderCallback(r)
 
 
     def spawn(self):
