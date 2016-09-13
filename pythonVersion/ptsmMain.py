@@ -13,6 +13,7 @@ from lib.SerialRead import SerialListener
 from PyQt4 import QtGui, QtCore
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
+import serial.tools.list_ports
 
 """
 # Todo : 2. Decouple Send Data and listener. Dedicated listening button.
@@ -30,7 +31,7 @@ OFFICEIP = "129.70.149.78"
 LISTENPORT = 5678
 SENDPORT = 7012
 socketError = False
-
+MEGA2560 = 'Arduino Mega 2560'
 
 """
 Set up Audio server
@@ -41,17 +42,18 @@ s.start()
 
 def linlin(x, smi, sma, dmi, dma): return (x-smi)/float(sma-smi)*(dma-dmi)+dmi
 def linlinInvert(x, smi, sma, dmi, dma): return (x-dmi)*(sma-smi)/(dma-dmi) + smi
+def findMega(myList):
+	for i in range(len(myList)):
+		try:
+			idx = myList[i].index(MEGA2560)
+			return idx
+		except ValueError:
+			pass
+
 
 class Ptsgui(QtGui.QMainWindow):
     def __init__(self):
         super(Ptsgui, self).__init__()
-        self.serialConnection = False
-        try:
-            self.serialThread = SerialListener("Serial1", '/dev/cu.usbmodem1421', self.serialUpdate)
-            self.serialConnection = True
-
-        except OSError:
-            print "Serial Port Error, not connected."
         self.fifo = pyo.FIFOPlayer(maxsize=20, mul=[.5, .5])
         self.mixer = pyo.Mixer()
         self.mixer.addInput(0, self.fifo);
@@ -93,13 +95,13 @@ class Ptsgui(QtGui.QMainWindow):
         self.sigmaSlider.setValue(int(value))
 
     def androidUpdateVelSound(self, value):
+        # This function was meant for recording the soundfile. But it is not used.
         print "Velsound callbacked"
         print type(value)
         # self.velSound = value[0]
 
     def androidUpdateR(self, value):
         self.rSlider.setValue(int(value))
-
 
 
     def serialUpdate(self, value):
@@ -244,6 +246,19 @@ class Ptsgui(QtGui.QMainWindow):
         else: temp = False
         if source.text() == "Show Potential":
             self.showPotential = temp
+        elif source.text() == "Squeeze Ball":
+            self.connectArduino = temp
+            if (self.connectArduino == True):
+                print "haha"
+                self.portList = list(serial.tools.list_ports.comports())
+                result = findMega(self.portList)
+                if result:
+                    self.serialThread = SerialListener("Serial1", self.portList[result][0], self.serialUpdate)
+                    self.serialThread.start()
+                    self.statusBar().showMessage("Serial Connection Success.")
+                else:
+                    self.statusBar().showMessage("Connection Failed. Squeeze ball is not connected to the computer.")
+
         else: pass
 
 
@@ -423,6 +438,11 @@ class Ptsgui(QtGui.QMainWindow):
         # self.ipDisplay.valueChanged[str].connect(self.changeValue)
 
 
+        self.connectArduinoButton = QtGui.QPushButton("Squeeze Ball", self)
+        self.connectArduinoButton.setCheckable(True)
+        self.connectArduinoButton.clicked[bool].connect(self.toggleButtons)
+
+
         cltLeftBox = QtGui.QGridLayout()
         cltLeftBox.addWidget(ncTitle,1 , 0), cltLeftBox.addWidget(self.ncDisplay, 1, 1)
         cltLeftBox.addWidget(dimTitle, 1, 2), cltLeftBox.addWidget(self.dimDisplay, 1, 3)
@@ -430,7 +450,7 @@ class Ptsgui(QtGui.QMainWindow):
         cltLeftBox.addWidget(nrmaxTitle, 2, 2), cltLeftBox.addWidget(self.nrmaxDisplay, 2, 3)
         cltLeftBox.addWidget(genDataButton, 3, 0 ), cltLeftBox.addWidget(openFileButton, 3, 1) , \
             cltLeftBox.addWidget(printInfoButton, 3, 2), cltLeftBox.addWidget(self.showPotentialButton, 3, 3)
-        cltLeftBox.addWidget(ipTitle, 4,0), cltLeftBox.addWidget(self.ipDisplay, 4, 1)
+        cltLeftBox.addWidget(ipTitle, 4,0), cltLeftBox.addWidget(self.ipDisplay, 4, 1), cltLeftBox.addWidget(self.connectArduinoButton, 4, 2)
         cltLeftBox.addWidget(sendDataButton, 5, 0, 5, 2), cltLeftBox.addWidget(clearListenerButton, 5, 2), cltLeftBox.addWidget(recButton, 5, 3)
 
 
@@ -459,10 +479,6 @@ class Ptsgui(QtGui.QMainWindow):
 
         mainlayout.addLayout(plotBox, 8)
         mainlayout.addLayout(cltBox, 2)
-
-        # Run serial listener here.
-        if (self.serialConnection == True):
-            self.serialThread.start()
         self.show()
 
     def ipChangeValue(self):

@@ -2,10 +2,9 @@ import serial
 import threading
 
 class SerialListener(threading.Thread):
-
-    def __init__(self, threadID, portName, callback):
+    def __init__(self, threadID, arduinoPort, callback):
         self.threadID = threadID
-        self.ser = serial.Serial(portName)
+        self.ser = serial.Serial(arduinoPort)
         self.flag = True
         threading.Thread.__init__(self)
         self.value = 0
