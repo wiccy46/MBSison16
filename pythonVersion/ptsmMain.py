@@ -66,7 +66,7 @@ class Ptsgui(QtGui.QMainWindow):
         self.data, self.pos, self.N, self.dim = np.zeros(2), np.zeros(2), 0, 0
         self.ip = OFFICEIP
         self.genDim, self.genNrmin, self.genNrmax, self.genNc = 3, 50, 200,  4 # Init gen data para
-        self.showPotential = True
+        self.showPotential, self.connectArduino = False, False # Toggle buttons
 
 
         self.vel , self.t = 0, 1.
@@ -153,8 +153,9 @@ class Ptsgui(QtGui.QMainWindow):
         self.trjFigAx.set_ylim([-0.5, 0.5])
 
         self.specFigAx.specgram(self.velSound, NFFT = 1024, Fs = FS, noverlap = 900, cmap= plt.cm.gist_heat)
-
-
+        # self.specFigAx.set_yticks(np.arange(0 , max(self.specFigAx.get_yticks()/1000), 1))
+        # print self.specFigAx.get_yticks()
+        # print type(self.specFigAx.get_yticks())
         self.trjFigCanvas.draw()
 
     def sendData(self):
@@ -183,12 +184,11 @@ class Ptsgui(QtGui.QMainWindow):
             androidClient.osc_msg(nr=self.N % nr, msg=sortedData[self.N - self.N % nr: self.N, 0:2])
             # Start listening
             self.androidListener = Listening(gui = self, ip = SELFIP, sliderCallback=self.androidUpdateSlider,
-                                             sigmaSliderCallback=self.androidUpdateSigma, dtSliderCallback= self.androidUpdateR,
+                                             sigmaSliderCallback=self.androidUpdateSigma, rSliderCallback= self.androidUpdateR,
                                              velSoundCallback= self.androidUpdateVelSound, port = LISTENPORT)
             self.androidListener.spawn()
             if (socketError):
                 print "socketError, server already exist. "
-
                 self.statusBar().showMessage('Error, Click "Clear Listener" and try again.')
             else:
                 self.androidListener.add_handler()
@@ -223,11 +223,9 @@ class Ptsgui(QtGui.QMainWindow):
         dlg.setFileMode(QtGui.QFileDialog.AnyFile)
         dlg.setFilter("Text files (*.txt *csv)") # And then it depends whether txt or csv do thing differently
         filenames = QtCore.QStringList()
-
         if dlg.exec_():
             filenames = dlg.selectedFiles()
             f = open(filenames[0], 'r')
-
             with f:
                 temp = f.read()
                 self.contents.setText(temp) # send data to data here. but might need processing.
@@ -258,7 +256,6 @@ class Ptsgui(QtGui.QMainWindow):
                     self.statusBar().showMessage("Serial Connection Success.")
                 else:
                     self.statusBar().showMessage("Connection Failed. Squeeze ball is not connected to the computer.")
-
         else: pass
 
 
@@ -297,17 +294,17 @@ class Ptsgui(QtGui.QMainWindow):
 
         self.specFigAx = self.trjFig.add_subplot(122)
         self.specFigAx.set_title('Spectrogram')
+        self.specFigAx.set_ylabel("Frequency (Hz)")
 
+        self.specFigAx.set_xlabel("Time (s)")
         self.trjFigToolbar = NavigationToolbar(self.trjFigCanvas,self)
-
-
 
         plotBoxR = QtGui.QVBoxLayout()
         plotBoxR.setSpacing(5)
         plotBoxR.addWidget(self.trjFigCanvas)
         plotBoxR.addWidget(self.trjFigToolbar)
-
         #-----------------
+
         # cltBox contents (sublay 1)
         genDataButton = QtGui.QPushButton('Generate Data', self)
         genDataButton.setToolTip('This button randomise a '
@@ -466,7 +463,6 @@ class Ptsgui(QtGui.QMainWindow):
         cltRightBox.addWidget(self.rSlider, 3, 1)
         cltRightBox.addWidget(self.rDisplay, 3, 2)
 
-
         # Sub layout 1
         plotBox = QtGui.QHBoxLayout()
         plotBox.addLayout(plotBoxL, 3)
@@ -504,7 +500,6 @@ class Ptsgui(QtGui.QMainWindow):
             dmi, dma = 0.99, 1.0
             self.r = linlin(value, smi, sma, dmi, dma)
             self.rDisplay.setText(str(format(self.r, '.3f')))
-
 
         elif self.sender() == self.dimDisplay:
             print "dimension = " + str(value)
