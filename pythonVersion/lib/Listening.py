@@ -28,7 +28,7 @@ class Listening(object):
         self.receive_address = ip, port
         self.sliderCallback = sliderCallback
         self.sigmaSliderCallback = sigmaSliderCallback
-        self.dtSliderCallback = dtSliderCallback
+        self.rSliderCallback = rSliderCallback
         self.pressure = 0.001
 
     def printpara(self):
@@ -49,7 +49,7 @@ class Listening(object):
         angVec  = np.random.rand(self.gui.dim - 1) * 2 * math.pi
         velVec = por2ecu(angVec, self.gui.dim, self.pressure)     # Initial velocity
 
-        # vel = np.random.rand(self.gui.dim) - 0.5  # Need to be controllable by pressure
+        # velVec = (np.random.rand(self.gui.dim) - 0.5)  # Need to be controllable by pressure
         pos = np.array(self.gui.data[idx, :])
 
         trj, junk, forceSound = Trajectory.PTSM(pos, self.gui.data, velVec, self.gui.exp_table,

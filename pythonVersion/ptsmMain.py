@@ -31,7 +31,7 @@ OFFICEIP = "129.70.149.78"
 LISTENPORT = 5678
 SENDPORT = 7012
 socketError = False
-MEGA2560 = 'Arduino Mega 2560'
+MEGA2560 = 'Arduino Leonardo'
 
 """
 Set up Audio server
@@ -105,7 +105,7 @@ class Ptsgui(QtGui.QMainWindow):
 
 
     def serialUpdate(self, value):
-        temp =  linlin(value, 550, 590, 0, 100) # 540 is fulls queezed, 590 is relax state
+        temp =  linlin(value, 450, 490, 0, 100) # 540 is fulls queezed, 590 is relax state
         self.sigmaSlider.setValue(temp)
 
     # TODO, test whether the listern will also update the self.velSound
@@ -200,7 +200,12 @@ class Ptsgui(QtGui.QMainWindow):
 
     def genData(self):
         self.dataFigAx.clear()
-        self.data = DataGen().datagen(self.genDim, self.genNc, sigma=0.4, minnr=self.genNrmin, maxnr=self.genNrmax)
+        if (self.genDim > 2):
+            self.data = DataGen().datagen(self.genDim, self.genNc, sigma=0.4, minnr=self.genNrmin, maxnr=self.genNrmax)
+        elif (self.genDim == 2):
+            self.data  = np.random.rand((self.genNrmax + self.genNrmin)/2 * self.genNc ,2)-[0.5, 0.5]
+        else:
+            self.statusBar().showMessage("ERROR! Data dimension needs to be greater than 1")
         self.N, self.dim = self.data.shape[0], self.data.shape[1]
         self.norm_max = self.dim
         self.max_sigma = np.log(self.dim) / 2.5 * 0.5 + 0.1
