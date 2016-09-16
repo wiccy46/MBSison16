@@ -13,6 +13,8 @@ class SerialListener(threading.Thread):
     def run(self):
         while(self.flag == True):
             self.callback(float(self.ser.readline()))
+        if (self.flag == False):
+            print "Serial connection closed. "
 
     def stop(self):
         self.flag = False

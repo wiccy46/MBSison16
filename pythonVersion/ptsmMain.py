@@ -105,7 +105,7 @@ class Ptsgui(QtGui.QMainWindow):
 
 
     def serialUpdate(self, value):
-        temp =  linlin(value, 450, 490, 0, 100) # 540 is fulls queezed, 590 is relax state
+        temp =  linlin(value, 460, 490, 0, 100) # 540 is fulls queezed, 590 is relax state
         self.sigmaSlider.setValue(temp)
 
     # TODO, test whether the listern will also update the self.velSound
@@ -218,10 +218,15 @@ class Ptsgui(QtGui.QMainWindow):
         self.statusBar().showMessage('Data generated. Click on the data on the left graph to probe a particle trajectory.')
 
     def clearListener(self):
-        # Maybe need to try.
-        # maybe also send a clear data to android.
-        self.androidListener.stop()
-        self.serialThread.stop()
+        try:
+            self.androidListener.stop()
+            time.sleep(0.3)
+            self.androidListener.stop()
+            self.statusBar().showMessage("Clear Listener")
+        except AttributeError:
+            pass
+
+
 
     def getfiles(self):
         dlg = QtGui.QFileDialog()
@@ -252,7 +257,7 @@ class Ptsgui(QtGui.QMainWindow):
         elif source.text() == "Squeeze Ball":
             self.connectArduino = temp
             if (self.connectArduino == True):
-                print "haha"
+                print "Create Serial Connection"
                 self.portList = list(serial.tools.list_ports.comports())
                 result = findMega(self.portList)
                 if result:
@@ -261,6 +266,8 @@ class Ptsgui(QtGui.QMainWindow):
                     self.statusBar().showMessage("Serial Connection Success.")
                 else:
                     self.statusBar().showMessage("Connection Failed. Squeeze ball is not connected to the computer.")
+            else:
+                self.serialThread.stop()
         else: pass
 
 
@@ -536,6 +543,7 @@ class Ptsgui(QtGui.QMainWindow):
             QtGui.QMessageBox.No, QtGui.QMessageBox.Yes)
 		if reply == QtGui.QMessageBox.Yes:
 			event.accept()
+
 		else:
 			event.ignore()
 
