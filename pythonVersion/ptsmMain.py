@@ -35,6 +35,7 @@ MEGA2560 = 'Arduino Leonardo'
 
 """
 Set up Audio server
+Here is now
 """
 s = pyo.Server(sr=FS, nchnls=2, buffersize=BLOCK, duplex=0).boot()
 s.start()
@@ -105,7 +106,7 @@ class Ptsgui(QtGui.QMainWindow):
 
 
     def serialUpdate(self, value):
-        temp =  linlin(value, 460, 490, 0, 100) # 540 is fulls queezed, 590 is relax state
+        temp =  linlin(value, 465, 490, 0, 100) # 540 is fulls queezed, 590 is relax state
         self.sigmaSlider.setValue(temp)
 
     # TODO, test whether the listern will also update the self.velSound
@@ -118,7 +119,7 @@ class Ptsgui(QtGui.QMainWindow):
         time.sleep(self.t + 0.1)
         s.recstop()
 
-
+    # The curren
     def datafigon_pick(self, event):
         ind = np.array(event.ind)  # Get the index of the clicked data
         self.pos = np.array(self.data[ind[0], :])
@@ -126,7 +127,7 @@ class Ptsgui(QtGui.QMainWindow):
         trj, junk, forceSound = Trajectory.PTSM(self.pos, self.data, self.vel, self.exp_table, self.exp_resolution, \
                                                 self.norm_max, sigma=self.sigma, dt=self.dt, r=self.r, \
                                                 Nsamp=self.audioVecSize, compensation=self.m_comp)
-        self.velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.windowing
+        self.velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.windowing * 0.7
         self.velSound = DSP().butter_lowpass_filter(self.velSound, 2000.0, FS, 6)  # 6th order
         # forceSound = forceSound / np.max(np.absolute(forceSound))
         stopevent = threading.Event()
@@ -242,7 +243,7 @@ class Ptsgui(QtGui.QMainWindow):
 
 
     def printDataInfo(self):
-        if(self.data):
+        if(self.data.any()):
             self.statusBar().showMessage("Data: Row: " + str(self.N) + " , Dim: " + str(self.dim) + " , Clusters: "
                                          + str(self.genNc) + ".")
         else:
