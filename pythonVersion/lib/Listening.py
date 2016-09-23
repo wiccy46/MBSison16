@@ -56,7 +56,7 @@ class Listening(object):
                                                 self.gui.exp_resolution, self.gui.norm_max, sigma=self.gui.sigma,
                                                 dt=self.gui.dt, r=self.gui.r,
                                                 Nsamp=self.gui.audioVecSize, compensation=self.gui.m_comp)
-        self.gui.velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.gui.windowing
+        self.gui.velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.gui.windowing * 0.7
         self.gui.velSound = DSP().butter_lowpass_filter(self.gui.velSound, 2000.0, FS, 6)  # 6th order
         # forceSound = forceSound / np.max(np.absolute(forceSound))
         stopevent = threading.Event()

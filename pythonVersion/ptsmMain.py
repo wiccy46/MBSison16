@@ -20,7 +20,7 @@ import serial.tools.list_ports
 # TODO : 4. Closing the app needs to kill the thread as well.
 # TODo: 1. the serial port name is different some time. Because I have other usb device connected before.
 # TODO: 5. The potential plot only reflects the potentials of the 2 columns rather than the whole data set
-# Todo: 7: Record sound button .
+#
 """
 
 FS = 44100/4
@@ -35,7 +35,6 @@ MEGA2560 = 'Arduino Leonardo'
 
 """
 Set up Audio server
-Here is now
 """
 s = pyo.Server(sr=FS, nchnls=2, buffersize=BLOCK, duplex=0).boot()
 s.start()
@@ -68,7 +67,6 @@ class Ptsgui(QtGui.QMainWindow):
         self.ip = OFFICEIP
         self.genDim, self.genNrmin, self.genNrmax, self.genNc = 3, 50, 200,  4 # Init gen data para
         self.showPotential, self.connectArduino = False, False # Toggle buttons
-
 
         self.vel , self.t = 0, 1.
         self.exp_table = np.zeros(1) # Initialise the exp table
@@ -109,15 +107,10 @@ class Ptsgui(QtGui.QMainWindow):
         temp =  linlin(value, 465, 490, 0, 100) # 540 is fulls queezed, 590 is relax state
         self.sigmaSlider.setValue(temp)
 
-    # TODO, test whether the listern will also update the self.velSound
     def proc(self, stopevent):
         self.fifo.put(self.velSound)
 
-    def recordSound(self, soundOutput):
-        s.recstart(filename="rec1")
-        self.fifo.put(soundOutput)
-        time.sleep(self.t + 0.1)
-        s.recstop()
+
 
     # The curren
     def datafigon_pick(self, event):
@@ -128,7 +121,7 @@ class Ptsgui(QtGui.QMainWindow):
                                                 self.norm_max, sigma=self.sigma, dt=self.dt, r=self.r, \
                                                 Nsamp=self.audioVecSize, compensation=self.m_comp)
         self.velSound = trj[:, 0] / np.max(np.absolute(trj[:, 0])) * self.windowing * 0.7
-        self.velSound = DSP().butter_lowpass_filter(self.velSound, 2000.0, FS, 6)  # 6th order
+        self.velSound = DSP().butter_lowpass_filter(self.velSound, 2000.0, FS, 6)  * 0.7 # 6th order
         # forceSound = forceSound / np.max(np.absolute(forceSound))
         stopevent = threading.Event()
         producer = threading.Thread(name="Compute audio signal", target=self.proc, args=[stopevent])
@@ -269,6 +262,25 @@ class Ptsgui(QtGui.QMainWindow):
                     self.statusBar().showMessage("Connection Failed. Squeeze ball is not connected to the computer.")
             else:
                 self.serialThread.stop()
+
+        elif source.text() == "Rec":
+            if (temp == True):
+                dlg = QtGui.QFileDialog()
+                fileName = dlg.getSaveFileNameAndFilter(self, "Save File")
+                fileName = str(fileName[0])
+
+                if (fileName.find(".wav") < 0):
+                # Need to detect if . is given
+                    fileName = fileName + '.wav'
+
+                s.recstart(fileName)
+                self.recordButton.setText("Stop")
+                print "Start recording"
+
+        elif source.text() == "Stop":
+            s.recstop()
+            self.recordButton.setText("Rec")
+            print "stop Recording"
         else: pass
 
 
@@ -336,13 +348,16 @@ class Ptsgui(QtGui.QMainWindow):
         sendDataButton.clicked.connect(self.sendData)
         sendDataButton.setToolTip('Send the first 2 columns of data to Android device for plotting.')
 
+        self.recordButton = QtGui.QPushButton("Rec", self)
+        self.recordButton.setToolTip('Record the last particle trajectory sound, only .wav file.')
+        self.recordButton.setCheckable(True)
+        self.recordButton.clicked[bool].connect(self.toggleButtons)
+
+
         clearListenerButton = QtGui.QPushButton('Clear Listener', self)
         clearListenerButton.setToolTip('Click to clear the osc listener.')
         clearListenerButton.clicked.connect(self.clearListener)
 
-        recButton = QtGui.QPushButton("Record", self)
-        recButton.setToolTip('Record the last particle trajectory sound, require a particle.')
-        recButton.clicked.connect(self.recordSound)
 
         self.showPotentialButton = QtGui.QPushButton("Show Potential", self)
         self.showPotentialButton.setCheckable(True)
@@ -461,7 +476,7 @@ class Ptsgui(QtGui.QMainWindow):
         cltLeftBox.addWidget(genDataButton, 3, 0 ), cltLeftBox.addWidget(openFileButton, 3, 1) , \
             cltLeftBox.addWidget(printInfoButton, 3, 2), cltLeftBox.addWidget(self.showPotentialButton, 3, 3)
         cltLeftBox.addWidget(ipTitle, 4,0), cltLeftBox.addWidget(self.ipDisplay, 4, 1), cltLeftBox.addWidget(self.connectArduinoButton, 4, 2)
-        cltLeftBox.addWidget(sendDataButton, 5, 0, 5, 2), cltLeftBox.addWidget(clearListenerButton, 5, 2), cltLeftBox.addWidget(recButton, 5, 3)
+        cltLeftBox.addWidget(sendDataButton, 5, 0, 5, 2), cltLeftBox.addWidget(clearListenerButton, 5, 2), cltLeftBox.addWidget(self.recordButton, 5, 3)
 
 
         # Add right box
