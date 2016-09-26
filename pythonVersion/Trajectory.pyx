@@ -92,7 +92,7 @@ def PTSM(np.ndarray[np.float64_t, ndim = 1] pos, np.ndarray[np.float64_t, ndim =
     for i in range(Nsamp * (dim + 1)):
         resultTrj[i] = trj[i]
     for i in range(dim):
-        resultVel[i] = velocity[i]
+        resultVel[i] = velocity[i] * velocity[i]
 
     for i in range(dim * Nsamp):
         resultForce[i] = viewForce[i]

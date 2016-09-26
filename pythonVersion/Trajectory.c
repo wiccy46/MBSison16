@@ -2468,7 +2468,7 @@ static PyObject *__pyx_pf_10Trajectory_2PTSM(CYTHON_UNUSED PyObject *__pyx_self,
  *     for i in range(Nsamp * (dim + 1)):
  *         resultTrj[i] = trj[i]             # <<<<<<<<<<<<<<
  *     for i in range(dim):
- *         resultVel[i] = velocity[i]
+ *         resultVel[i] = velocity[i] * velocity[i]
  */
     __pyx_t_23 = PyFloat_FromDouble((__pyx_v_trj[__pyx_v_i])); if (unlikely(!__pyx_t_23)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 93; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_23);
@@ -2480,7 +2480,7 @@ static PyObject *__pyx_pf_10Trajectory_2PTSM(CYTHON_UNUSED PyObject *__pyx_self,
  *     for i in range(Nsamp * (dim + 1)):
  *         resultTrj[i] = trj[i]
  *     for i in range(dim):             # <<<<<<<<<<<<<<
- *         resultVel[i] = velocity[i]
+ *         resultVel[i] = velocity[i] * velocity[i]
  * 
  */
   __pyx_t_3 = __pyx_v_dim;
@@ -2490,18 +2490,18 @@ static PyObject *__pyx_pf_10Trajectory_2PTSM(CYTHON_UNUSED PyObject *__pyx_self,
     /* "Trajectory.pyx":95
  *         resultTrj[i] = trj[i]
  *     for i in range(dim):
- *         resultVel[i] = velocity[i]             # <<<<<<<<<<<<<<
+ *         resultVel[i] = velocity[i] * velocity[i]             # <<<<<<<<<<<<<<
  * 
  *     for i in range(dim * Nsamp):
  */
-    __pyx_t_23 = PyFloat_FromDouble((__pyx_v_velocity[__pyx_v_i])); if (unlikely(!__pyx_t_23)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 95; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
+    __pyx_t_23 = PyFloat_FromDouble(((__pyx_v_velocity[__pyx_v_i]) * (__pyx_v_velocity[__pyx_v_i]))); if (unlikely(!__pyx_t_23)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 95; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_GOTREF(__pyx_t_23);
     if (unlikely(__Pyx_SetItemInt(__pyx_v_resultVel, __pyx_v_i, __pyx_t_23, int, 1, __Pyx_PyInt_From_int, 0, 1, 1) < 0)) {__pyx_filename = __pyx_f[0]; __pyx_lineno = 95; __pyx_clineno = __LINE__; goto __pyx_L1_error;}
     __Pyx_DECREF(__pyx_t_23); __pyx_t_23 = 0;
   }
 
   /* "Trajectory.pyx":97
- *         resultVel[i] = velocity[i]
+ *         resultVel[i] = velocity[i] * velocity[i]
  * 
  *     for i in range(dim * Nsamp):             # <<<<<<<<<<<<<<
  *         resultForce[i] = viewForce[i]

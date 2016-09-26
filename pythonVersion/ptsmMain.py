@@ -20,7 +20,7 @@ import serial.tools.list_ports
 # TODO : 4. Closing the app needs to kill the thread as well.
 # TODo: 1. the serial port name is different some time. Because I have other usb device connected before.
 # TODO: 5. The potential plot only reflects the potentials of the 2 columns rather than the whole data set
-#
+#FTODO: 3 Load data function. to replace self.data with loaded file without header.
 """
 
 FS = 44100/4
@@ -160,7 +160,6 @@ class Ptsgui(QtGui.QMainWindow):
             print "listener not created yet. "
             self.firstSend = False
         else:
-
             print "stopping listener."
             self.androidListener.stop()
             time.sleep(0.5)
@@ -219,7 +218,6 @@ class Ptsgui(QtGui.QMainWindow):
             self.statusBar().showMessage("Clear Listener")
         except AttributeError:
             pass
-
 
 
     def getfiles(self):
