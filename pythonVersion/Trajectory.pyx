@@ -60,6 +60,7 @@ def PTSM(np.ndarray[np.float64_t, ndim = 1] pos, np.ndarray[np.float64_t, ndim =
             if (lookupIdx >= table_res):
                 lookupIdx = table_res - 1
             for i in range(dim):
+                print table_res, lookupIdx
                 #                 print lookupExp[lookupIdx]
                 force[i] += -temp[i] * lookupExp[lookupIdx]
 

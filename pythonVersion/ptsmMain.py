@@ -110,13 +110,12 @@ class Ptsgui(QtGui.QMainWindow):
     def proc(self, stopevent):
         self.fifo.put(self.velSound)
 
-
-
     # The curren
     def datafigon_pick(self, event):
         ind = np.array(event.ind)  # Get the index of the clicked data
         self.pos = np.array(self.data[ind[0], :])
         self.vel = np.random.rand(self.dim) - 0.5
+        # Add CL
         trj, junk, forceSound = Trajectory.PTSM(self.pos, self.data, self.vel, self.exp_table, self.exp_resolution, \
                                                 self.norm_max, sigma=self.sigma, dt=self.dt, r=self.r, \
                                                 Nsamp=self.audioVecSize, compensation=self.m_comp)
@@ -430,7 +429,7 @@ class Ptsgui(QtGui.QMainWindow):
         nrminTitle = QtGui.QLabel('Nr_min')
         nrminTitle.setFixedSize(70, 20)
         self.nrminDisplay = QtGui.QSpinBox()
-        self.nrminDisplay.setRange(10, 300)
+        self.nrminDisplay.setRange(10, 300000)
         self.nrminDisplay.setValue(50)
         self.nrminDisplay.setFixedSize(50, 20)
         self.nrminDisplay.resize(self.nrminDisplay.sizeHint())
@@ -441,7 +440,7 @@ class Ptsgui(QtGui.QMainWindow):
         nrmaxTitle = QtGui.QLabel('Nr_max')
         nrmaxTitle.setFixedSize(50, 20)
         self.nrmaxDisplay = QtGui.QSpinBox()
-        self.nrmaxDisplay.setRange(100, 600)
+        self.nrmaxDisplay.setRange(100, 600000)
         self.nrmaxDisplay.setValue(200)
         self.nrmaxDisplay.setFixedSize(50, 20)
         self.nrmaxDisplay.resize(self.nrmaxDisplay.sizeHint())

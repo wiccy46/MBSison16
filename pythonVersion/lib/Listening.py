@@ -52,6 +52,8 @@ class Listening(object):
         # velVec = (np.random.rand(self.gui.dim) - 0.5)  # Need to be controllable by pressure
         pos = np.array(self.gui.data[idx, :])
 
+        # Add CL.
+        # Add condition which to use.
         trj, junk, forceSound = Trajectory.PTSM(pos, self.gui.data, velVec, self.gui.exp_table,
                                                 self.gui.exp_resolution, self.gui.norm_max, sigma=self.gui.sigma,
                                                 dt=self.gui.dt, r=self.gui.r,
